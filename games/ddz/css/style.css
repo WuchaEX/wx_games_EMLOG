@@ -1,0 +1,2225 @@
+/* ==================== CSS Custom Properties ==================== */
+:root {
+    --card-width: 70px;
+    --card-height: 100px;
+    --card-overlap: -30px;
+    --card-font-size: 18px;
+    --card-suit-size: 24px;
+    --played-card-width: 50px;
+    --played-card-height: 70px;
+    --avatar-size: 50px;
+    --top-bar-height: 50px;
+    --tracker-height: 36px;
+    --btn-action-padding: 12px 30px;
+    --btn-action-font: 16px;
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-top: env(safe-area-inset-top, 0px);
+}
+
+/* ==================== Reset & Base ==================== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    touch-action: manipulation;
+    -webkit-overflow-scrolling: touch;
+}
+
+body {
+    font-family: 'Microsoft YaHei', 'PingFang SC', 'Helvetica Neue', sans-serif;
+    background: linear-gradient(135deg, #2D1A12 0%, #1A0E08 100%);
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+}
+
+/* ==================== 粘性导航栏（统一风格） ==================== */
+.ddz-nav {
+    width: 100%;
+    margin: 0;
+    height: 60px;
+    background: linear-gradient(135deg, #e17055 0%, #d94a2e 100%);
+    display: flex;
+    align-items: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 5000;
+    box-shadow: 0 2px 20px rgba(225, 112, 85, 0.3);
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.ddz-nav.scrolled {
+    background: linear-gradient(135deg, #e17055f2 0%, #d94a2ef2 100%);
+    box-shadow: 0 4px 24px rgba(225, 112, 85, 0.4);
+}
+
+.ddz-nav-inner {
+    width: 100%;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+}
+
+.ddz-nav-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.ddz-nav-icon {
+    font-size: 24px;
+    line-height: 1;
+}
+
+.ddz-nav-title {
+    color: #fff;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    margin: 0;
+}
+
+.ddz-nav-right {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-left: auto;
+}
+
+.ddz-nav-right a {
+    color: rgba(255,255,255,0.85);
+    text-decoration: none;
+    font-size: 14px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.ddz-nav-right a:hover {
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+}
+
+.ddz-nav-right a.nav-home-btn {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    font-weight: 500;
+    border: 1px solid rgba(255,255,255,0.3);
+}
+
+.ddz-nav-right a.nav-home-btn:hover {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.5);
+}
+
+/* ==================== Game Container ==================== */
+.game-container {
+    width: 100vw;
+    height: calc(100vh - 60px);
+    height: calc(100dvh - 60px);
+    margin-top: 60px;
+    position: relative;
+    background: linear-gradient(180deg, #2D1A12 0%, #1E0F08 50%, #140A06 100%);
+    overflow: hidden;
+}
+
+/* ==================== Nav User Controls ==================== */
+.nav-user-info,
+.nav-score,
+.nav-btn,
+.nav-home-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    border-radius: 17px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+.nav-user-info {
+    gap: 6px;
+    padding: 0 10px;
+    background: rgba(0,0,0,0.25);
+    max-width: 220px;
+}
+
+.nav-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(255,215,0,0.7);
+    flex-shrink: 0;
+}
+
+.nav-user-name {
+    font-size: 13px;
+    color: #fff;
+    font-weight: 500;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nav-score {
+    gap: 4px;
+    padding: 0 10px;
+    background: rgba(0,0,0,0.25);
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.nav-score:hover {
+    background: rgba(0,0,0,0.4);
+}
+
+.nav-score-label {
+    font-size: 12px;
+    color: rgba(255,255,255,0.8);
+}
+
+.nav-score-value {
+    font-size: 14px;
+    font-weight: bold;
+    color: #ffd700;
+}
+
+.nav-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 12px;
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.nav-btn:hover {
+    background: rgba(255,255,255,0.3);
+}
+
+.nav-btn:active {
+    transform: scale(0.95);
+}
+
+.nav-home-btn {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    font-weight: 500;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 0 14px;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.nav-home-btn:hover {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.5);
+}
+
+.btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.btn:active {
+    transform: scale(0.95);
+}
+
+.btn-primary {
+    background: #d63031;
+    color: white;
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+/* ==================== Card Tracker (TOP horizontal bar) ==================== */
+.card-tracker-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--tracker-height);
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    z-index: 99;
+    overflow: hidden;
+    transition: height 0.3s ease;
+}
+
+.card-tracker-bar.collapsed {
+    height: var(--tracker-height);
+}
+
+.card-tracker-bar.expanded {
+    height: auto;
+    max-height: 100px;
+}
+
+.tracker-toggle {
+    padding: 4px 12px;
+    background: rgba(255, 215, 0, 0.2);
+    color: #ffd700;
+    border: none;
+    border-radius: 0 10px 10px 0;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    min-height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.tracker-toggle:active {
+    background: rgba(255, 215, 0, 0.4);
+}
+
+.tracker-toggle .arrow {
+    transition: transform 0.3s;
+    display: inline-block;
+}
+
+.card-tracker-bar.expanded .tracker-toggle .arrow {
+    transform: rotate(180deg);
+}
+
+.tracker-content {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 10px;
+    flex-wrap: wrap;
+    overflow-x: auto;
+    flex: 1;
+    -webkit-overflow-scrolling: touch;
+}
+
+.card-tracker-bar.collapsed .tracker-content {
+    display: none;
+}
+
+.tracker-item {
+    text-align: center;
+    padding: 2px 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    min-width: 32px;
+    flex-shrink: 0;
+}
+
+.tracker-item.used {
+    opacity: 0.3;
+}
+
+.tracker-value {
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+}
+
+.tracker-count {
+    font-size: 9px;
+    color: #aaa;
+}
+
+/* ==================== Player Areas ==================== */
+.player-area {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.player-bottom {
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 95%;
+    max-width: 800px;
+}
+
+.player-left {
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 130px;
+    align-items: center;
+}
+
+.player-right {
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 130px;
+    align-items: center;
+}
+
+/* ==================== Player Info ==================== */
+.player-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border-radius: 30px;
+    margin-bottom: 8px;
+}
+
+.player-avatar {
+    width: var(--avatar-size);
+    height: var(--avatar-size);
+    border-radius: 50%;
+    border: 3px solid #ffd700;
+    object-fit: cover;
+    background: #333;
+}
+
+.player-name {
+    color: white;
+    font-size: 13px;
+    font-weight: bold;
+    white-space: nowrap;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.player-role {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #e74c3c;
+    color: white;
+}
+
+.player-role.farmer {
+    background: #27ae60;
+}
+
+.card-count {
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+}
+
+/* ==================== AI Speech Bubble ==================== */
+.speech-bubble {
+    position: absolute;
+    background: #fff;
+    color: #333;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    max-width: 160px;
+    z-index: 100;
+    white-space: nowrap;
+    pointer-events: none;
+    line-height: 1.4;
+}
+
+.speech-bubble .speech-arrow {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border: 8px solid transparent;
+}
+
+.speech-bubble .speech-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 左侧AI气泡：显示在AI名字下方，箭头朝上指向名字 */
+.player-left .speech-bubble {
+    top: 60px;
+    left: 10px;
+    transform-origin: left top;
+}
+.player-left .speech-bubble .speech-arrow {
+    top: -16px;
+    left: 20px;
+    border-bottom-color: #fff;
+}
+
+/* 右侧AI气泡：显示在AI名字下方，箭头朝上指向名字 */
+.player-right .speech-bubble {
+    top: 60px;
+    right: 10px;
+    transform-origin: right top;
+}
+.player-right .speech-bubble .speech-arrow {
+    top: -16px;
+    right: 20px;
+    border-bottom-color: #fff;
+}
+
+/* 气泡动画 */
+.speech-bubble.speech-animate {
+    animation: bubbleIn 0.35s ease forwards, bubbleOut 0.4s ease 2.6s forwards;
+}
+
+@keyframes bubbleIn {
+    from { opacity: 0; transform: scale(0.6); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes bubbleOut {
+    from { opacity: 1; transform: scale(1); }
+    to   { opacity: 0; transform: scale(0.6); }
+}
+
+/* ==================== Hand Cards (LEFT-ALIGNED fan layout) ==================== */
+.hand-cards {
+    display: flex;
+    justify-content: center;
+    flex-wrap: nowrap;
+    min-height: calc(var(--card-height) + 30px);
+    padding: 30px 10px 8px;
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+}
+
+.hand-cards::-webkit-scrollbar {
+    display: none;
+}
+
+.card {
+    width: var(--card-width);
+    height: var(--card-height);
+    min-width: var(--card-width);
+    background: white;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: flex-start;
+    padding: 6px;
+    font-size: var(--card-font-size);
+    font-weight: bold;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    position: relative;
+    margin-left: var(--card-overlap);
+    flex-shrink: 0;
+    -webkit-touch-callout: none;
+}
+
+.card:first-child {
+    margin-left: 0;
+}
+
+.card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.card.selected {
+    transform: translateY(-20px);
+    box-shadow: 0 12px 25px rgba(214, 48, 49, 0.5);
+    border: 2px solid #d63031;
+}
+
+.card.red {
+    color: #e74c3c;
+}
+
+.card.black {
+    color: #2c3e50;
+}
+
+.card-value {
+    font-size: var(--card-font-size);
+    line-height: 1;
+}
+
+.card-suit {
+    font-size: var(--card-suit-size);
+    line-height: 1;
+    margin-top: 1px;
+}
+
+/* 牌面中央大花色（装饰用） */
+.card-center-suit {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: calc(var(--card-suit-size) * 1.8);
+    opacity: 0.15;
+    pointer-events: none;
+}
+
+.card.joker {
+    background: linear-gradient(135deg, #e17055 0%, #fdcb6e 100%);
+    color: white;
+}
+
+.card.joker.small {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+}
+
+/* ==================== AI Card Backs ==================== */
+.card-back {
+    width: 40px;
+    height: 60px;
+    background: linear-gradient(135deg, #e17055 0%, #d63031 100%);
+    border-radius: 5px;
+    margin-left: -25px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    flex-shrink: 0;
+}
+
+.card-back:first-child {
+    margin-left: 0;
+}
+
+.ai-cards {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    max-width: 120px;
+}
+
+/* ==================== Play Area (Center) ==================== */
+.play-area {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 90%;
+    max-width: 500px;
+}
+
+.played-cards-container {
+    display: flex;
+    justify-content: space-around;
+    width: 100%;
+}
+
+.played-cards {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 80px;
+}
+
+.played-cards-label {
+    color: white;
+    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+.played-cards-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 3px;
+    min-height: 70px;
+}
+
+.played-card {
+    width: var(--played-card-width);
+    height: var(--played-card-height);
+    background: white;
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    font-size: 14px;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.played-card.red {
+    color: #e74c3c;
+}
+
+.played-card.black {
+    color: #2c3e50;
+}
+
+/* ==================== Landlord Cards ==================== */
+.landlord-cards {
+    position: absolute;
+    top: calc(var(--tracker-height) + 14px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    z-index: 50;
+}
+
+.landlord-card {
+    width: 45px;
+    height: 65px;
+    background: linear-gradient(135deg, #f39c12 0%, #e74c3c 100%);
+    border-radius: 5px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-size: 12px;
+}
+
+.landlord-card.revealed {
+    background: white;
+    color: #333;
+}
+
+.landlord-card.revealed.red {
+    color: #e74c3c;
+}
+
+.landlord-card.revealed.black {
+    color: #2c3e50;
+}
+
+.landlord-card.revealed.joker {
+    background: linear-gradient(135deg, #e17055 0%, #fdcb6e 100%);
+    color: white;
+}
+
+.landlord-card.revealed.joker.small {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+}
+
+/* ==================== Action Buttons ==================== */
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 2px;
+    flex-wrap: wrap;
+}
+
+.btn-action {
+    padding: 8px 24px;
+    border: none;
+    border-radius: 25px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: bold;
+    min-width: 44px;
+    min-height: 36px;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.btn-action:active {
+    transform: scale(0.95);
+}
+
+.btn-play {
+    background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+    color: white;
+}
+
+.btn-pass {
+    background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+    color: white;
+}
+
+
+.btn-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ==================== Bid Buttons ==================== */
+.bid-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.btn-bid {
+    padding: 12px 25px;
+    border: none;
+    border-radius: 25px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: bold;
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+    color: white;
+    min-width: 44px;
+    min-height: 44px;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.btn-bid:active {
+    transform: scale(0.95);
+}
+
+.btn-nobid {
+    background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+}
+
+/* ==================== Multiplier ==================== */
+.multiplier {
+    position: absolute;
+    top: calc(var(--tracker-height) + 14px);
+    right: 15px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 10px;
+    padding: 8px 12px;
+    color: white;
+    font-size: 13px;
+    z-index: 50;
+}
+
+.multiplier-value {
+    color: #ffd700;
+    font-weight: bold;
+    font-size: 18px;
+}
+
+/* ==================== Toast Messages (bottom-left) ==================== */
+.toast-container {
+    position: absolute;
+    bottom: 140px;
+    left: 15px;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    z-index: 1000;
+    pointer-events: none;
+    max-height: 200px;
+    overflow: hidden;
+}
+
+.toast {
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    animation: toastIn 0.3s ease, toastOut 0.3s ease 1.5s forwards;
+    white-space: nowrap;
+    border-left: 3px solid #ffd700;
+}
+
+@keyframes toastIn {
+    from { opacity: 0; transform: translateX(-30px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toastOut {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(-30px); }
+}
+
+/* ==================== Result Modal ==================== */
+.result-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 4000;
+}
+
+.result-content {
+    background: linear-gradient(135deg, #2D1A12 0%, #1E0F08 100%);
+    border-radius: 20px;
+    padding: 30px;
+    text-align: center;
+    color: white;
+    border: 2px solid #ffd700;
+    min-width: 280px;
+    max-width: 90vw;
+}
+
+.result-title {
+    font-size: 32px;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+
+.result-title.win { color: #2ecc71; }
+.result-title.lose { color: #e74c3c; }
+
+.result-score {
+    font-size: 22px;
+    margin-bottom: 15px;
+}
+
+.result-detail {
+    font-size: 13px;
+    color: #aaa;
+    margin-bottom: 15px;
+}
+
+/* ==================== Leaderboard Modal ==================== */
+.leaderboard-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 4000;
+}
+
+.leaderboard-content {
+    background: linear-gradient(135deg, #2D1A12 0%, #1E0F08 100%);
+    border-radius: 20px;
+    padding: 25px;
+    color: white;
+    border: 2px solid #ffd700;
+    min-width: 350px;
+    max-width: 90vw;
+    max-height: 80vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.leaderboard-title {
+    font-size: 22px;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 15px;
+    color: #ffd700;
+}
+
+.leaderboard-list {
+    max-height: 350px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.leaderboard-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    margin-bottom: 8px;
+}
+
+.leaderboard-item:nth-child(1) {
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+}
+
+.leaderboard-item:nth-child(2) {
+    background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+}
+
+.leaderboard-item:nth-child(3) {
+    background: linear-gradient(135deg, #cd7f32 0%, #b8860b 100%);
+}
+
+.rank {
+    font-weight: bold;
+    width: 30px;
+}
+
+.player-name-lb {
+    flex: 1;
+    text-align: left;
+    margin-left: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.lb-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.lb-stats {
+    font-size: 12px;
+    color: #aaa;
+    margin-right: 10px;
+}
+
+.player-score {
+    font-weight: bold;
+    color: #ffd700;
+}
+
+.leaderboard-item.ai-item {
+    opacity: 0.85;
+    border-left: 3px solid #e17055;
+}
+
+/* ==================== Login Screen ==================== */
+.login-screen {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, #2D1A12 0%, #1A0E08 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 3000;
+    padding: 20px;
+}
+
+.login-container {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    padding: 35px;
+    min-width: 340px;
+    max-width: 400px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.login-subtitle {
+    font-size: 15px;
+    text-align: center;
+    margin-bottom: 25px;
+    color: #666;
+    font-weight: 500;
+}
+
+.login-error {
+    background: #fee;
+    color: #c00;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    text-align: center;
+    margin-bottom: 15px;
+    display: none;
+}
+
+.login-error.show { display: block; }
+
+.login-tip {
+    background: #fdf2e9;
+    color: #e17055;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.login-tip strong {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.btn-redirect-login {
+    padding: 14px;
+    background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: block;
+    text-align: center;
+    min-height: 44px;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.btn-redirect-login:active {
+    transform: scale(0.98);
+}
+
+.btn-guest {
+    padding: 12px;
+    background: transparent;
+    color: #666;
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 10px;
+    min-height: 44px;
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.btn-guest:active {
+    background: #f5f5f5;
+}
+
+/* ==================== User Info (legacy, kept for compatibility) ==================== */
+/* User info moved to nav bar, see .nav-user-info / .nav-score above */
+
+/* ==================== Loading ==================== */
+.loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #e0e0e0;
+    border-top-color: #e17055;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading-text {
+    margin-top: 15px;
+    color: #666;
+    font-size: 14px;
+}
+
+/* ==================== Hidden ==================== */
+.hidden {
+    display: none !important;
+}
+
+/* ============================================================
+   MOBILE RESPONSIVE - 全面优化手机端体验
+   ============================================================ */
+
+/* 手机端基础设置 */
+@media (max-width: 768px) {
+    :root {
+        --card-width: 48px;
+        --card-height: 70px;
+        --card-overlap: -26px;
+        --card-font-size: 13px;
+        --card-suit-size: 16px;
+        --played-card-width: 36px;
+        --played-card-height: 52px;
+        --avatar-size: 32px;
+        --top-bar-height: 44px;
+        --tracker-height: 28px;
+        --btn-action-padding: 10px 18px;
+        --btn-action-font: 14px;
+    }
+
+    /* 导航栏适配 */
+    .ddz-nav {
+        height: 50px;
+    }
+
+    .ddz-nav-inner {
+        padding: 0 12px;
+    }
+
+    .ddz-nav-title {
+        font-size: 16px;
+        letter-spacing: 1px;
+    }
+
+    .ddz-nav-icon {
+        font-size: 20px;
+    }
+
+    .ddz-nav-right {
+        gap: 6px;
+    }
+
+    .ddz-nav-right a {
+        font-size: 12px;
+        padding: 4px 10px;
+    }
+
+    /* 登录屏幕适配导航栏 */
+    .login-screen {
+        top: 50px;
+    }
+
+    /* 游戏容器适配导航栏 */
+    .game-container {
+        height: calc(100vh - 50px);
+        height: calc(100dvh - 50px);
+        margin-top: 50px;
+    }
+
+    /* 导航栏用户信息适配 */
+    .nav-user-info,
+    .nav-score,
+    .nav-btn,
+    .nav-home-btn {
+        height: 30px;
+        border-radius: 15px;
+    }
+
+    /* 手机端隐藏头像+名字区域（游戏区已有玩家信息） */
+    .nav-user-info {
+        display: none;
+    }
+
+    /* 积分只保留数字 */
+    .nav-score {
+        padding: 0 8px;
+    }
+
+    .nav-score-label {
+        display: none;
+    }
+
+    .nav-score-value {
+        font-size: 13px;
+    }
+
+    /* 按钮只保留emoji，隐藏文字 */
+    .nav-btn {
+        padding: 0 6px;
+        font-size: 14px;
+        gap: 0;
+    }
+
+    .nav-btn-text {
+        display: none;
+    }
+
+    .btn {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+
+    /* 记牌器 */
+    .card-tracker-bar {
+        height: var(--tracker-height);
+    }
+
+    .tracker-toggle {
+        padding: 3px 8px;
+        font-size: 11px;
+    }
+
+    .tracker-item {
+        min-width: 24px;
+        padding: 2px 3px;
+    }
+
+    .tracker-value {
+        font-size: 10px;
+    }
+
+    .tracker-count {
+        font-size: 7px;
+    }
+
+    /* AI玩家位置调整 - 更紧凑 */
+    .player-left {
+        left: 5px;
+        top: 35%;
+        transform: translateY(-50%);
+    }
+
+    .player-right {
+        right: 5px;
+        top: 35%;
+        transform: translateY(-50%);
+    }
+
+    .player-info {
+        gap: 4px;
+        padding: 4px 8px;
+        margin-bottom: 4px;
+        font-size: 10px;
+    }
+
+    .player-name {
+        font-size: 10px;
+    }
+
+    .player-role {
+        font-size: 9px;
+        padding: 1px 5px;
+    }
+
+    .card-count {
+        font-size: 10px;
+        padding: 1px 5px;
+    }
+
+    /* AI手牌背面 */
+    .card-back {
+        width: 28px;
+        height: 42px;
+        margin-left: -18px;
+    }
+
+    .ai-cards {
+        max-width: 80px;
+    }
+
+    /* 中央出牌区域 */
+    .play-area {
+        top: 42%;
+        gap: 10px;
+    }
+
+    .played-cards-container {
+        width: 100%;
+    }
+
+    .played-cards {
+        min-width: 70px;
+    }
+
+    .played-cards-list {
+        min-height: 55px;
+        gap: 2px;
+    }
+
+    /* 底牌和倍数 */
+    .landlord-cards {
+        top: calc(var(--tracker-height) + 10px);
+        gap: 4px;
+    }
+
+    .landlord-card {
+        width: 32px;
+        height: 46px;
+        font-size: 9px;
+    }
+
+    .multiplier {
+        top: calc(var(--tracker-height) + 10px);
+        right: 8px;
+        padding: 4px 8px;
+        font-size: 10px;
+    }
+
+    .multiplier-value {
+        font-size: 14px;
+    }
+
+    /* 玩家底部区域 */
+    .player-bottom {
+        width: 98%;
+        bottom: 0;
+    }
+
+    .player-info {
+        margin-bottom: 2px;
+    }
+
+    .hand-cards {
+        min-height: calc(var(--card-height) + 25px);
+        padding: 25px 5px 2px;
+    }
+
+    /* 操作按钮 - 紧凑 */
+    .action-buttons {
+        gap: 6px;
+        margin-top: 1px;
+    }
+
+    .btn-action {
+        padding: 5px 14px;
+        font-size: 12px;
+        min-height: 32px;
+    }
+
+    .bid-buttons {
+        gap: 6px;
+    }
+
+    .btn-bid {
+        padding: 5px 14px;
+        font-size: 12px;
+        min-height: 32px;
+    }
+
+    .bid-buttons {
+        gap: 8px;
+    }
+
+    .btn-bid {
+        padding: 8px 16px;
+        font-size: 13px;
+        min-height: 40px;
+    }
+
+    /* Toast消息 */
+    .toast-container {
+        bottom: 100px;
+        left: 8px;
+    }
+
+    .toast {
+        font-size: 11px;
+        padding: 5px 10px;
+    }
+
+    /* 弹窗 */
+    .login-container {
+        min-width: auto;
+        width: 90%;
+        padding: 20px 15px;
+    }
+
+    .login-subtitle {
+        font-size: 12px;
+        margin-bottom: 15px;
+    }
+
+    .login-tip {
+        padding: 10px;
+        font-size: 12px;
+        margin-bottom: 15px;
+    }
+
+    .result-content {
+        padding: 20px;
+        min-width: 240px;
+    }
+
+    .result-title {
+        font-size: 24px;
+    }
+
+    .result-score {
+        font-size: 18px;
+    }
+
+    .leaderboard-content {
+        min-width: auto;
+        width: 90%;
+        padding: 15px;
+    }
+
+    .leaderboard-title {
+        font-size: 18px;
+    }
+
+    .leaderboard-item {
+        padding: 8px 10px;
+        margin-bottom: 6px;
+        font-size: 12px;
+    }
+}
+
+/* 小屏手机 (iPhone SE, 小米等) */
+@media (max-width: 400px) {
+    :root {
+        --card-width: 42px;
+        --card-height: 62px;
+        --card-overlap: -22px;
+        --card-font-size: 11px;
+        --card-suit-size: 14px;
+        --played-card-width: 30px;
+        --played-card-height: 44px;
+        --avatar-size: 28px;
+        --top-bar-height: 40px;
+        --tracker-height: 24px;
+    }
+
+    .ddz-nav {
+        height: 44px;
+    }
+
+    .ddz-nav-title {
+        font-size: 13px;
+        letter-spacing: 0.5px;
+    }
+
+    .ddz-nav-icon {
+        font-size: 16px;
+    }
+
+    .ddz-nav-right a {
+        font-size: 11px;
+        padding: 3px 8px;
+    }
+
+    .login-screen {
+        top: 44px;
+    }
+
+    .game-container {
+        height: calc(100vh - 44px);
+        height: calc(100dvh - 44px);
+        margin-top: 44px;
+    }
+
+    .nav-user-info,
+    .nav-score,
+    .nav-btn,
+    .nav-home-btn {
+        height: 28px;
+        border-radius: 14px;
+    }
+
+    .nav-user-info {
+        padding: 0 6px;
+    }
+
+    .nav-avatar {
+        width: 18px;
+        height: 18px;
+    }
+
+    .nav-score {
+        padding: 0 6px;
+    }
+
+    .nav-score-label {
+        font-size: 9px;
+    }
+
+    .nav-score-value {
+        font-size: 11px;
+    }
+
+    .nav-btn {
+        padding: 0 6px;
+        font-size: 10px;
+    }
+
+    .btn {
+        padding: 3px 6px;
+        font-size: 10px;
+    }
+
+    .player-info {
+        padding: 3px 6px;
+        gap: 3px;
+    }
+
+    .player-name {
+        font-size: 9px;
+    }
+
+    .player-role {
+        font-size: 8px;
+        padding: 1px 4px;
+    }
+
+    .card-back {
+        width: 24px;
+        height: 36px;
+        margin-left: -15px;
+    }
+
+    .ai-cards {
+        max-width: 60px;
+    }
+
+    .btn-action {
+        padding: 6px 12px;
+        font-size: 12px;
+        min-height: 36px;
+    }
+
+    .btn-bid {
+        padding: 6px 12px;
+        font-size: 12px;
+        min-height: 36px;
+    }
+
+    .landlord-card {
+        width: 28px;
+        height: 40px;
+        font-size: 8px;
+    }
+
+    .multiplier {
+        padding: 3px 6px;
+        font-size: 9px;
+    }
+
+    .multiplier-value {
+        font-size: 12px;
+    }
+
+    .toast-container {
+        bottom: 85px;
+    }
+
+    .toast {
+        font-size: 10px;
+        padding: 4px 8px;
+    }
+}
+
+/* 横屏手机 */
+@media (max-height: 500px) and (orientation: landscape) {
+    :root {
+        --card-width: 44px;
+        --card-height: 64px;
+        --card-overlap: -18px;
+        --card-font-size: 11px;
+        --card-suit-size: 14px;
+        --top-bar-height: 36px;
+        --tracker-height: 24px;
+        --avatar-size: 28px;
+    }
+
+    .ddz-nav {
+        height: 40px;
+    }
+
+    .ddz-nav-title {
+        font-size: 13px;
+    }
+
+    .ddz-nav-icon {
+        font-size: 16px;
+    }
+
+    .ddz-nav-right a {
+        font-size: 11px;
+        padding: 2px 8px;
+    }
+
+    .login-screen {
+        top: 40px;
+    }
+
+    .game-container {
+        height: calc(100vh - 40px);
+        height: calc(100dvh - 40px);
+        margin-top: 40px;
+    }
+
+    .nav-user-info,
+    .nav-score,
+    .nav-btn,
+    .nav-home-btn {
+        height: 28px;
+        border-radius: 14px;
+    }
+
+    .nav-user-info {
+        padding: 0 6px;
+    }
+
+    .nav-avatar {
+        width: 18px;
+        height: 18px;
+    }
+
+    .nav-user-name {
+        display: none;
+    }
+
+    .nav-score {
+        padding: 0 6px;
+    }
+
+    .nav-btn {
+        padding: 0 6px;
+        font-size: 10px;
+    }
+
+    .btn {
+        padding: 3px 6px;
+        font-size: 10px;
+    }
+
+    /* 横屏时AI玩家移到两侧中间 */
+    .player-left {
+        left: 5px;
+        top: 50%;
+    }
+
+    .player-right {
+        right: 5px;
+        top: 50%;
+    }
+
+    .player-info {
+        flex-direction: column;
+        padding: 4px 6px;
+        gap: 2px;
+    }
+
+    .player-name {
+        font-size: 9px;
+    }
+
+    .card-back {
+        width: 22px;
+        height: 34px;
+        margin-left: -14px;
+    }
+
+    .ai-cards {
+        max-width: 50px;
+    }
+
+    /* 中央区域 */
+    .play-area {
+        top: 48%;
+        gap: 5px;
+    }
+
+    .played-cards-list {
+        min-height: 45px;
+    }
+
+    /* 底部玩家 */
+    .player-bottom {
+        bottom: 3px;
+    }
+
+    .hand-cards {
+        min-height: calc(var(--card-height) + 20px);
+    }
+
+    /* 底牌 */
+    .landlord-cards {
+        left: 10px;
+        top: calc(var(--tracker-height) + 8px);
+        transform: none;
+    }
+
+    .landlord-card {
+        width: 26px;
+        height: 38px;
+        font-size: 8px;
+    }
+
+    .multiplier {
+        right: auto;
+        left: auto;
+        right: 10px;
+    }
+
+    /* 按钮 */
+    .action-buttons {
+        gap: 6px;
+        margin-top: 3px;
+    }
+
+    .btn-action {
+        padding: 5px 12px;
+        font-size: 11px;
+        min-height: 32px;
+    }
+
+    .bid-buttons {
+        gap: 6px;
+    }
+
+    .btn-bid {
+        padding: 5px 12px;
+        font-size: 11px;
+        min-height: 32px;
+    }
+
+    /* Toast */
+    .toast-container {
+        bottom: 75px;
+    }
+
+    /* 记牌器 */
+    .tracker-toggle {
+        padding: 2px 6px;
+        font-size: 10px;
+    }
+
+    .tracker-item {
+        min-width: 20px;
+        padding: 1px 2px;
+    }
+
+    .tracker-value {
+        font-size: 9px;
+    }
+
+    .tracker-count {
+        font-size: 6px;
+    }
+}
+
+/* 超小屏幕 (iPhone 5/SE 第一代等) */
+@media (max-width: 360px) {
+    :root {
+        --card-width: 38px;
+        --card-height: 56px;
+        --card-overlap: -20px;
+        --card-font-size: 10px;
+        --card-suit-size: 12px;
+        --played-card-width: 26px;
+        --played-card-height: 38px;
+    }
+
+    .ddz-nav {
+        height: 42px;
+    }
+
+    .ddz-nav-title {
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+
+    .ddz-nav-icon {
+        font-size: 15px;
+    }
+
+    .ddz-nav-right a {
+        font-size: 10px;
+        padding: 2px 6px;
+    }
+
+    .login-screen {
+        top: 42px;
+    }
+
+    .game-container {
+        height: calc(100vh - 42px);
+        height: calc(100dvh - 42px);
+        margin-top: 42px;
+    }
+
+    .btn {
+        padding: 2px 5px;
+        font-size: 9px;
+    }
+
+    .player-info {
+        padding: 2px 4px;
+    }
+
+    .player-name {
+        font-size: 8px;
+    }
+
+    .card-back {
+        width: 20px;
+        height: 30px;
+        margin-left: -12px;
+    }
+
+    .btn-action {
+        padding: 5px 10px;
+        font-size: 11px;
+    }
+
+    .btn-bid {
+        padding: 5px 10px;
+        font-size: 11px;
+    }
+}
+
+/* 高端手机 (iPhone X+, 带刘海) */
+@media (min-width: 375px) and (min-height: 812px) {
+    .ddz-nav {
+        padding-top: var(--safe-area-top);
+        height: calc(60px + var(--safe-area-top));
+    }
+
+    .login-screen {
+        top: calc(60px + var(--safe-area-top));
+    }
+
+    .game-container {
+        height: calc(100vh - 60px - var(--safe-area-top));
+        height: calc(100dvh - 60px - var(--safe-area-top));
+        margin-top: calc(60px + var(--safe-area-top));
+    }
+
+    .player-bottom {
+        bottom: calc(10px + var(--safe-area-bottom));
+    }
+
+    .card-tracker-bar {
+        top: var(--safe-area-top);
+    }
+
+    .landlord-cards {
+        top: calc(var(--tracker-height) + var(--safe-area-top) + 12px);
+    }
+
+    .multiplier {
+        top: calc(var(--tracker-height) + var(--safe-area-top) + 12px);
+    }
+}
+
+/* 触摸设备优化 */
+@media (hover: none) and (pointer: coarse) {
+    .card:hover {
+        transform: none;
+    }
+
+    .card:active {
+        transform: translateY(-5px);
+    }
+
+    .card.selected:active {
+        transform: translateY(-20px);
+    }
+
+    .btn:hover,
+    .btn-action:hover,
+    .btn-bid:hover {
+        transform: none;
+    }
+
+    .btn:active,
+    .btn-action:active,
+    .btn-bid:active {
+        transform: scale(0.95);
+    }
+}
+
+/* 深色模式支持 */
+@media (prefers-color-scheme: dark) {
+    .login-container {
+        background: rgba(30, 30, 40, 0.95);
+    }
+
+    .login-subtitle {
+        color: #aaa;
+    }
+
+    .login-tip {
+        background: rgba(100, 150, 200, 0.2);
+        color: #e17055;
+    }
+
+    .btn-guest {
+        color: #aaa;
+        border-color: #444;
+    }
+}
+
+/* ==================== 积分流水弹窗 ==================== */
+.score-log-list {
+    max-height: 350px;
+    overflow-y: auto;
+    padding: 5px 0;
+    scrollbar-width: thin;
+}
+
+.score-log-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    gap: 8px;
+    font-size: 13px;
+}
+
+.score-log-item:last-child {
+    border-bottom: none;
+}
+
+.score-log-item .log-reason {
+    flex: 1;
+    color: #ccc;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.score-log-item .log-time {
+    color: #666;
+    font-size: 11px;
+    white-space: nowrap;
+    min-width: 90px;
+    text-align: center;
+}
+
+.score-log-item .log-change {
+    min-width: 50px;
+    text-align: right;
+    font-family: 'Courier New', monospace;
+}
+
+/* 积分点击提示（手指图标） */
+.nav-score-value {
+    cursor: pointer !important;
+}
+
+.nav-score-value:hover {
+    opacity: 0.8;
+}
+
+/* ==================== 商城/背包通用样式 ==================== */
+.shop-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    background: rgba(255,255,255,0.06);
+}
+
+/* 筛选按钮统一缩小字号，减少间距 */
+.shop-filter-btn,
+.inv-filter-btn {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+/* ==================== 炸弹特效 ==================== */
+.bomb-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5000;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: bombFlash 0.6s ease forwards;
+}
+
+.bomb-overlay-inner {
+    font-size: 80px;
+    animation: bombPulse 0.6s ease forwards;
+    filter: drop-shadow(0 0 30px currentColor);
+}
+
+@keyframes bombFlash {
+    0%   { background: rgba(255, 255, 255, 0); }
+    20%  { background: rgba(255, 255, 255, 0.4); }
+    60%  { background: rgba(255, 255, 255, 0.15); }
+    100% { background: rgba(255, 255, 255, 0); }
+}
+
+@keyframes bombPulse {
+    0%   { transform: scale(0.3); opacity: 0; }
+    30%  { transform: scale(1.4); opacity: 1; }
+    60%  { transform: scale(0.9); opacity: 0.9; }
+    100% { transform: scale(1); opacity: 0; }
+}
+
+/* ==================== 加成卡指示器 ==================== */
+.buff-indicator {
+    position: absolute;
+    top: calc(var(--tracker-height) + 50px);
+    right: 10px;
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+    color: #fff;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 4px 12px;
+    border-radius: 20px;
+    z-index: 50;
+    box-shadow: 0 2px 10px rgba(243, 156, 18, 0.4);
+    animation: buffPulse 2s ease-in-out infinite;
+    white-space: nowrap;
+}
+
+@keyframes buffPulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 2px 10px rgba(243, 156, 18, 0.4); }
+    50% { transform: scale(1.05); box-shadow: 0 4px 20px rgba(243, 156, 18, 0.6); }
+}
+
+/* ==================== 欢迎界面（已登录用户） ==================== */
+.welcome-user {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin: 20px 0;
+}
+.welcome-avatar {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: 3px solid #d63031;
+    object-fit: cover;
+}
+.welcome-name {
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+}
+.welcome-score {
+    font-size: 14px;
+    color: #bbb;
+}
+.welcome-score strong {
+    color: #f1c40f;
+    font-size: 18px;
+}
+
+/* 结果弹窗按钮组 */
+.result-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 16px;
+}
+.result-buttons .btn-secondary {
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.25s;
+}
+.result-buttons .btn-secondary:hover {
+    background: rgba(255,255,255,0.25);
+}
+
+#btnStartGame {
+    display: block;
+    width: 100%;
+    margin: 16px 0;
+    font-size: 18px;
+    padding: 12px 40px;
+    box-sizing: border-box;
+}
+
+/* 欢迎界面操作按钮组（商城/背包/充值） */
+.welcome-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+.welcome-action-btn {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 8px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+    white-space: nowrap;
+    -webkit-appearance: none;
+    appearance: none;
+}
+.welcome-action-btn:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+.welcome-action-btn:active {
+    transform: scale(0.97);
+}
+
+/* ==================== 欢迎界面：公告与最近更新 ==================== */
+.welcome-modules {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    text-align: left;
+}
+.welcome-notice,
+.welcome-updates {
+    background: rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 14px 16px;
+}
+.welcome-notice .module-title,
+.welcome-updates .module-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f1c40f;
+    margin-bottom: 8px;
+}
+.welcome-notice .module-body {
+    font-size: 13px;
+    color: #ddd;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+.welcome-updates .module-body {
+    font-size: 12px;
+    color: #bbb;
+    line-height: 1.8;
+    max-height: calc(1.8em * 5);  /* 默认显示5行 */
+    overflow-y: auto;
+    padding-right: 4px;
+    scrollbar-width: thin;
+}
+.welcome-updates .module-body::-webkit-scrollbar {
+    width: 4px;
+}
+.welcome-updates .module-body::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.2);
+    border-radius: 2px;
+}
+.welcome-updates .update-item {
+    padding: 2px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.welcome-updates .update-item:last-child {
+    border-bottom: none;
+}

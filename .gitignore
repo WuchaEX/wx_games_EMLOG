@@ -1,0 +1,6 @@
+# WorkBuddy project memory
+.workbuddy/
+
+# OS
+.DS_Store
+Thumbs.db

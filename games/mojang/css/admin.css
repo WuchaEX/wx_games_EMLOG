@@ -1,0 +1,28 @@
+/**
+ * wx_mojang - 后台管理样式
+ * 暗色卡片风格（card-dark 默认）
+ */
+
+.wx-majiang-admin .card {
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.wx-majiang-admin .card-header {
+    font-weight: 600;
+    background: #f8f9fa;
+}
+
+.wx-majiang-admin .form-control:focus {
+    border-color: #2d3436;
+    box-shadow: 0 0 0 0.2rem rgba(45, 52, 54, 0.25);
+}
+
+.wx-majiang-admin .nav-tabs .nav-link {
+    color: #495057;
+}
+
+.wx-majiang-admin .nav-tabs .nav-link.active {
+    color: #2d3436;
+    font-weight: 600;
+}
