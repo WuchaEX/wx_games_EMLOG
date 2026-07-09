@@ -131,7 +131,7 @@ function wx_games_index_head() {
 addAction('adm_head', 'wx_games_adm_head');
 function wx_games_adm_head() {
     if (Input::getStrVar('plugin', '') !== 'wx_games') return;
-    // 暂无需独立后台 CSS
+    echo '<link rel="stylesheet" href="' . WX_GAMES_URL . 'css/admin.css?v=1.0.0">' . "\n";
 }
 
 /**
@@ -322,3 +322,16 @@ function wx_games_add_credits($uid, $amount, $reason = '') {
         return false;
     }
 }
+
+// ============================================================
+// 通用 JSON 输出辅助函数
+// ============================================================
+function wx_games_json($code = 0, $data = [], $msg = '') {
+    $result = ['code' => $code];
+    if ($data !== [] && $data !== null) $result['data'] = $data;
+    if ($msg !== '') $result['message'] = $msg;
+    echo json_encode($result, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+function wx_games_ok($data = []) { wx_games_json(0, $data); }
+function wx_games_error($msg = '') { wx_games_json(-1, [], $msg); }

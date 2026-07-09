@@ -257,134 +257,6 @@ function wx_mojang_admin_render() {
     $plugin_assets_url = WX_MOJANG_URL . 'assets/';
 
     ?>
-<style>
-.wx-card {
-    background: #fff;
-    border-radius: 14px;
-    border: none;
-    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.06);
-    margin-bottom: 22px;
-    overflow: hidden;
-    transition: box-shadow 0.3s, transform 0.3s;
-    position: relative;
-    animation: fadeIn 0.35s ease both;
-}
-.wx-card:hover { box-shadow: 0 6px 30px rgba(0, 0, 0, 0.1); }
-.wx-card .card-header {
-    background: linear-gradient(135deg, #2d3436 0%, #636e72 100%);
-    color: #fff;
-    font-weight: 600;
-    font-size: 15px;
-    letter-spacing: 0.5px;
-    padding: 15px 22px;
-    border-bottom: none;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.wx-card .card-body { padding: 22px; }
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.form-control {
-    border-radius: 8px;
-    border: 1px solid #e0e2ea;
-    padding: 10px 14px;
-    font-size: 14px;
-    color: #333;
-}
-.form-control:focus {
-    border-color: #2d3436;
-    box-shadow: 0 0 0 3px rgba(45, 52, 54, 0.12);
-    outline: none;
-}
-.wx-btn {
-    background: linear-gradient(135deg, #2d3436, #636e72);
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    padding: 10px 24px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.25s;
-    text-decoration: none;
-    display: inline-block;
-}
-.wx-btn:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4); color: #fff; }
-.wx-btn-danger { background: linear-gradient(135deg, #f093fb, #f5576c); }
-.wx-btn-sm { padding: 6px 14px; font-size: 12px; }
-.wx-info-block {
-    background: #f8f9fe;
-    border-radius: 10px;
-    padding: 14px 16px;
-    font-size: 12px;
-    color: #666;
-}
-.wx-empty { text-align: center; padding: 30px 20px; color: #ccc; }
-.wx-empty .empty-icon { font-size: 40px; display: block; margin-bottom: 10px; }
-
-/* ===== 表格样式（同 ddz） ===== */
-.table-admin {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-}
-.table-admin th {
-    background: #f8f9fe;
-    color: #667eea;
-    font-weight: 600;
-    padding: 10px 12px;
-    text-align: left;
-    border-bottom: 2px solid #e8e8f0;
-    white-space: nowrap;
-}
-.table-admin td {
-    padding: 10px 12px;
-    border-bottom: 1px solid #f0f0f5;
-    color: #333;
-    vertical-align: middle;
-}
-.table-admin tr:hover td { background: #f8f9fe; }
-.table-admin .badge-score {
-    display: inline-block;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: #fff;
-    padding: 2px 10px;
-    border-radius: 20px;
-    font-weight: 600;
-    font-size: 13px;
-}
-.table-admin .win-text { color: #2ecc71; font-weight: 600; }
-.table-admin .lose-text { color: #e74c3c; font-weight: 600; }
-.pagination-admin {
-    display: flex;
-    justify-content: center;
-    gap: 4px;
-    margin-top: 16px;
-}
-.pagination-admin a, .pagination-admin span {
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 13px;
-    text-decoration: none;
-    color: #667eea;
-    background: #f8f9fe;
-}
-.pagination-admin a:hover { background: #667eea; color: #fff; }
-.pagination-admin .active { background: #667eea; color: #fff; }
-
-.row > [class*="col-"] { display: flex; }
-.row > [class*="col-"] > .wx-card { flex: 1; display: flex; flex-direction: column; width: 100%; }
-.wx-card .card-body { flex: 1; }
-
-@media (max-width: 768px) {
-    .wx-card .card-body { padding: 16px; }
-    .table-admin { font-size: 12px; }
-    .table-admin th, .table-admin td { padding: 6px 8px; }
-}
-</style>
 
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
         <h1 class="h3 mb-0 text-gray-800">H5 国标麻将 - 插件设置</h1>
@@ -397,8 +269,37 @@ function wx_mojang_admin_render() {
         </div>
     <?php endif; ?>
 
+<!-- Tab 导航 -->
+<style>
+.mj-tab-bar{display:flex;gap:0;border-bottom:2px solid #eee;margin-bottom:20px;flex-wrap:wrap}
+.mj-tab-btn{padding:10px 20px;cursor:pointer;border:none;background:none;font-size:0.9rem;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+.mj-tab-btn:hover{color:#e17055}
+.mj-tab-btn.active{color:#e17055;border-bottom-color:#e17055;font-weight:600}
+</style>
+<div class="mj-tab-bar">
+    <button class="mj-tab-btn active" onclick="switchMjTab('basic')">基本设置</button>
+    <button class="mj-tab-btn" onclick="switchMjTab('ai')">AI玩家设置</button>
+    <button class="mj-tab-btn" onclick="switchMjTab('score')">积分管理</button>
+    <button class="mj-tab-btn" onclick="switchMjTab('shop')">商城管理</button>
+</div>
+<script>
+function switchMjTab(tab){
+    document.querySelectorAll('.mj-tab').forEach(function(el){el.style.display='none'});
+    document.querySelectorAll('.mj-tab-btn').forEach(function(el){el.classList.remove('active')});
+    var t=document.getElementById('mj-tab-'+tab);
+    if(t)t.style.display='';
+    document.querySelector('.mj-tab-btn[onclick*="'+tab+'"]').classList.add('active');
+}
+// URL 参数恢复上次 tab
+(function(){
+    var m=location.search.match(/[?&]tab=([^&]+)/);
+    if(m)switchMjTab(m[1]);
+})();
+</script>
+
 <div class="container-fluid">
 
+<div id="mj-tab-basic" class="mj-tab">
     <!-- ========== 基本设置 ========== -->
             <div class="row">
                 <div class="col-lg-6">
@@ -527,7 +428,9 @@ function wx_mojang_admin_render() {
                     </div>
                 </div>
             </div>
+</div>
 
+<div id="mj-tab-ai" class="mj-tab" style="display:none">
     <!-- ========== AI玩家设置 ========== -->
             <div class="wx-card card-dark">
                 <div class="card-header">AI玩家设置</div>
@@ -631,7 +534,9 @@ function wx_mojang_admin_render() {
             .ai-player-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
             @media (max-width: 768px) { .ai-player-grid { grid-template-columns: 1fr; } }
             </style>
+</div>
 
+<div id="mj-tab-score" class="mj-tab" style="display:none">
     <!-- ========== 积分管理 ========== -->
     <!-- 搜索 & 用户列表 -->
     <div class="wx-card card-dark">
@@ -858,7 +763,9 @@ function wx_mojang_admin_render() {
             </div>
         </div>
     </div>
+</div>
 
+<div id="mj-tab-shop" class="mj-tab" style="display:none">
     <!-- ========== 商城管理 ========== -->
     <div class="row">
         <div class="col-md-6">
@@ -977,6 +884,7 @@ function wx_mojang_admin_render() {
     }
     updateTypeHint();
 </script>
+</div>
 </div>
 
 <script>

@@ -180,21 +180,7 @@ function wx_mojang_get_ai_players() {
 }
 
 function wx_mojang_check_user() {
-    $uid = 0;
-    if (session_status() === PHP_SESSION_NONE) { @session_start(); }
-    if (defined('UID') && UID > 0) { $uid = intval(UID); }
-    elseif (!empty($_SESSION['user']['uid'])) { $uid = intval($_SESSION['user']['uid']); }
-    elseif (!empty($_SESSION['uid'])) { $uid = intval($_SESSION['uid']); }
-    if ($uid == 0 && function_exists('ro_get_current_user')) {
-        $u = ro_get_current_user();
-        if (!empty($u['uid'])) { $uid = intval($u['uid']); }
-    }
-    if ($uid > 0) {
-        $db = Database::getInstance();
-        $row = $db->once_fetch_array("SELECT uid, nickname, photo AS avatar FROM `" . DB_PREFIX . "user` WHERE uid = $uid LIMIT 1");
-        if ($row) { return ['uid' => (int)$row['uid'], 'nickname' => $row['nickname'], 'avatar' => $row['avatar']]; }
-    }
-    return null;
+    return wx_games_check_user();
 }
 
 function wx_mojang_resolve_avatar($uid) {
