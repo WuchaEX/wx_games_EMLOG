@@ -375,6 +375,7 @@ if ($current_user) {
             baseUrl: '<?php echo $base_url; ?>',
             loginUrl: '<?php echo $login_url; ?>',
             leaderboardApi: '<?php echo $base_url; ?>?plugin=wx_games&game=ddz',
+            cardUrl: '<?php echo $plugin_url; ?>assets/cards/',
             penaltyMultiplier: <?php echo isset($config['penalty_multiplier']) ? floatval($config['penalty_multiplier']) : 1.0; ?>,
             maxEntries: <?php echo isset($config['max_entries']) ? intval($config['max_entries']) : 100; ?>
         };
@@ -580,8 +581,9 @@ if ($current_user) {
         function getCardBackStyle() {
             const effects = window.WX_DDZ_PLAYER_EFFECTS || {};
             const skin = effects.cardBack;
+            const base = (window.EMLOG_CONFIG && window.EMLOG_CONFIG.cardUrl) ? window.EMLOG_CONFIG.cardUrl : 'games/ddz/assets/cards/';
             if (!skin) {
-                return 'background:linear-gradient(135deg, #e17055 0%, #d63031 100%);';
+                return 'background:url(' + base + 'back_default.png) center/cover no-repeat; box-shadow:0 2px 10px rgba(0,0,0,0.3);';
             }
             // 新格式：直接使用 effect_data 中的 bg 作为背景
             if (skin.bg) {
@@ -621,34 +623,43 @@ if ($current_user) {
             return '';
         }
 
+        function getCardImagePath(card) {
+            const base = (window.EMLOG_CONFIG && window.EMLOG_CONFIG.cardUrl) ? window.EMLOG_CONFIG.cardUrl : 'games/ddz/assets/cards/';
+            if (card.isJoker) {
+                return base + (card.isSmall ? 'joker_small.png' : 'joker_big.png');
+            }
+            const suitMap = { '♠': 's', '♥': 'h', '♣': 'c', '♦': 'd' };
+            const suit = suitMap[card.suit] || 's';
+            return base + 'card_' + suit + '_' + card.value + '.png';
+        }
+
         function renderCard(card, isBack = false) {
             if (isBack) {
                 return '<div class="card-back" style="' + getCardBackStyle() + '"></div>';
             }
 
             const colorClass = card.isJoker ? (card.isSmall ? 'joker small' : 'joker') : SUIT_COLORS[card.suit];
-            const displayValue = card.isJoker ? (card.isSmall ? '小' : '大') : card.value;
-            const displaySuit = card.isJoker ? '王' : card.suit;
-            const centerSuit = card.isJoker ? '🃏' : card.suit;
+            const imgPath = getCardImagePath(card);
 
             return `
                 <div class="card ${colorClass}" data-id="${card.id}">
-                    <span class="card-value">${displayValue}</span>
-                    <span class="card-suit">${displaySuit}</span>
-                    <span class="card-center-suit">${centerSuit}</span>
+                    <img src="${imgPath}" alt="" class="card-img">
+                    <span class="card-value">${card.isJoker ? (card.isSmall ? '小' : '大') : card.value}</span>
+                    <span class="card-suit">${card.isJoker ? '王' : card.suit}</span>
+                    <span class="card-center-suit">${card.isJoker ? '🃏' : card.suit}</span>
                 </div>
             `;
         }
 
         function renderPlayedCard(card) {
             const colorClass = card.isJoker ? (card.isSmall ? 'joker small' : 'joker') : SUIT_COLORS[card.suit];
-            const displayValue = card.isJoker ? (card.isSmall ? '小' : '大') : card.value;
-            const displaySuit = card.isJoker ? '王' : card.suit;
+            const imgPath = getCardImagePath(card);
 
             return `
                 <div class="played-card ${colorClass}">
-                    <span>${displayValue}</span>
-                    <span>${displaySuit}</span>
+                    <img src="${imgPath}" alt="" class="card-img">
+                    <span>${card.isJoker ? (card.isSmall ? '小' : '大') : card.value}</span>
+                    <span>${card.isJoker ? '王' : card.suit}</span>
                 </div>
             `;
         }
