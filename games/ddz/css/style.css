@@ -567,7 +567,7 @@ body {
     transform: translateY(-20px);
     box-shadow: 0 12px 25px rgba(214, 48, 49, 0.5);
     border: 2px solid #d63031;
-    z-index: 10;
+    z-index: 100;
 }
 
 .card.red {

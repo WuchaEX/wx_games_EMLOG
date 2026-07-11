@@ -117,7 +117,7 @@ function wx_games_index_head() {
         echo '<link rel="stylesheet" href="' . WX_GAMES_URL . 'css/hub.css?v=1.0.0">' . "\n";
         echo '<meta name="viewport" content="width=device-width, initial-scale=1.0">' . "\n";
     } elseif ($game === 'ddz') {
-        echo '<link rel="stylesheet" href="' . WX_GAMES_URL . 'games/ddz/css/style.css?v=1.0.0">' . "\n";
+        echo '<link rel="stylesheet" href="' . WX_GAMES_URL . 'games/ddz/css/style.css?v=1.0.2">' . "\n";
         echo '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">' . "\n";
     } elseif ($game === 'mj') {
         echo '<link rel="stylesheet" href="' . WX_GAMES_URL . 'games/mojang/css/style.css?v=1.0.0">' . "\n";

@@ -685,9 +685,11 @@ if ($current_user) {
 
                     if (cardEl.classList.contains('selected')) {
                         cardEl.classList.remove('selected');
+                        cardEl.style.zIndex = '';
                         gameState.selectedCards = gameState.selectedCards.filter(c => c.id !== cardId);
                     } else {
                         cardEl.classList.add('selected');
+                        cardEl.style.zIndex = '100';
                         gameState.selectedCards.push(card);
                     }
                 };
