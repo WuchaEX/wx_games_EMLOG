@@ -30,10 +30,33 @@ if ($game === 'mj') {
     exit;
 }
 
+if ($game === 'niuniu') {
+    require_once __DIR__ . '/wx_games_niuniu_fn.php';
+    require_once __DIR__ . '/wx_games_niuniu_show.php';
+    exit;
+}
+
 // ===== 游戏大厅页 =====
 $user = wx_games_check_user();
 $list = wx_games_get_list();
 $base_url = BLOG_URL;
+
+// 读取各游戏后台公告，优先作为首页卡片描述
+$game_desc = [];
+$storage_map = ['ddz' => 'wx_ddz', 'mj' => 'wx_mojang', 'niuniu' => 'wx_niuniu'];
+foreach ($list as $key => $g) {
+    $storage_key = $storage_map[$key] ?? 'wx_' . $key;
+    $storage = Storage::getInstance($storage_key);
+    // 公告优先从 config 数组中读取，兼容旧版单字段
+    $config = $storage->getValue('config');
+    $notice = '';
+    if (is_array($config) && !empty($config['notice'])) {
+        $notice = $config['notice'];
+    } elseif ($storage->getValue('notice')) {
+        $notice = $storage->getValue('notice');
+    }
+    $game_desc[$key] = !empty($notice) ? $notice : $g['desc'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -71,6 +94,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
 .hub-footer{text-align:center;padding:20px;color:rgba(255,255,255,0.3);font-size:0.8rem}
 .hub-footer a{color:#e17055;text-decoration:none}
 .hub-footer a:hover{text-decoration:underline}
+
+/* ====== 播放器开关 ====== */
+.player-toggle-wrap{display:inline-flex;align-items:center;gap:6px;margin-left:12px;cursor:pointer;vertical-align:middle;user-select:none}
+.player-toggle-label{font-size:0.8rem;color:rgba(255,255,255,0.4);transition:color 0.3s}
+.player-toggle-label.on{color:#55efc4}
+.player-switch{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0}
+.player-switch input{opacity:0;width:0;height:0}
+.player-slider{position:absolute;cursor:pointer;inset:0;background:rgba(255,255,255,0.15);border-radius:20px;transition:0.3s}
+.player-slider::before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:0.3s}
+.player-switch input:checked+.player-slider{background:linear-gradient(135deg,#00b894,#55efc4)}
+.player-switch input:checked+.player-slider::before{transform:translateX(16px)}
 @media(max-width:600px){.hub-header h1{font-size:1.5rem}.game-grid{grid-template-columns:1fr;padding:0 16px 40px}.game-card{padding:20px}}
 </style>
 </head>
@@ -91,13 +125,65 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     <div class="game-card" onclick="location.href='?plugin=wx_games&game=<?= $key ?>'">
         <div class="icon"><?= $g['icon'] ?></div>
         <h3><?= htmlspecialchars($g['name']) ?></h3>
-        <p><?= htmlspecialchars($g['desc']) ?></p>
+        <p><?= nl2br(htmlspecialchars($game_desc[$key])) ?></p>
         <a class="btn-play" href="?plugin=wx_games&game=<?= $key ?>">开始游戏</a>
     </div>
 <?php endforeach; ?>
 </div>
 <div class="hub-footer">
     <a href="<?= $base_url ?>">返回首页</a> · 棋牌大厅 v1.0.0
+    <label class="player-toggle-wrap" id="playerToggleWrap">
+        <span class="player-toggle-label" id="playerToggleLabel">🎵 播放器</span>
+        <span class="player-switch">
+            <input type="checkbox" id="playerCheckbox" onchange="togglePlayer()">
+            <span class="player-slider"></span>
+        </span>
+    </label>
 </div>
+<script>
+// ====== 播放器管理 ======
+(function(){
+    const STORAGE_KEY = 'wx_games_player_on';
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved === '1') {
+        document.getElementById('playerCheckbox').checked = true;
+        loadPlayer();
+    }
+})();
+function loadPlayer() {
+    if (document.getElementById('myhk')) return;
+    var s1 = document.createElement('script');
+    s1.type = 'text/javascript';
+    s1.id = 'myhk';
+    s1.src = 'https://myhkw.cn/api/player/1733906404100';
+    s1.setAttribute('key','1733906404100');
+    s1.setAttribute('m','1');
+    document.body.appendChild(s1);
+    if (!document.querySelector('script[src*="myhkw.cn/player/js/jquery"]')) {
+        var s2 = document.createElement('script');
+        s2.type = 'text/javascript';
+        s2.src = 'https://myhkw.cn/player/js/jquery.min.js';
+        document.body.appendChild(s2);
+    }
+    document.getElementById('playerToggleLabel').textContent = '🎵 已开启';
+    document.getElementById('playerToggleLabel').className = 'player-toggle-label on';
+}
+function unloadPlayer() {
+    var el = document.getElementById('myhk');
+    if (el) el.remove();
+    document.getElementById('playerToggleLabel').textContent = '🎵 播放器';
+    document.getElementById('playerToggleLabel').className = 'player-toggle-label';
+}
+function togglePlayer() {
+    var cb = document.getElementById('playerCheckbox');
+    if (cb.checked) {
+        loadPlayer();
+        localStorage.setItem('wx_games_player_on', '1');
+    } else {
+        unloadPlayer();
+        localStorage.setItem('wx_games_player_on', '0');
+    }
+}
+</script>
 </body>
 </html>

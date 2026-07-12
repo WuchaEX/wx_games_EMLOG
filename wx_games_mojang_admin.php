@@ -35,7 +35,7 @@ $item_type_icons = [
 // ============================================================
 // 处理POST请求
 // ============================================================
-$action = Input::postStrVar('do', '');
+$action = Input::postStrVar('mj_action', '');
 $tab = Input::getStrVar('tab', 'basic');
 
 if ($action === 'save_setting') {
@@ -70,6 +70,21 @@ if ($action === 'save_setting') {
         $config['recharge_link'] = addslashes(trim(Input::postStrVar('recharge_link', '')));
     }
     $storage->setValue('config', $config, 'array');
+    // 数据清理
+    if (isset($_POST['do_reset'])) {
+        $db_rst = Database::getInstance();
+        if (isset($_POST['reset_scores'])) {
+            $db_rst->query("DELETE FROM `" . DB_PREFIX . "wx_games_scores` WHERE `game` = 'mj' AND `is_ai` = 0");
+            $db_rst->query("DELETE FROM `" . DB_PREFIX . "wx_games_logs`");
+        }
+        if (isset($_POST['reset_games'])) {
+            $db_rst->query("DELETE FROM `" . DB_PREFIX . "wx_mojang_games`");
+        }
+        if (isset($_POST['reset_items'])) {
+            $db_rst->query("DELETE FROM `" . DB_PREFIX . "wx_games_shop_items` WHERE `game` = 'mj'");
+            $db_rst->query("DELETE FROM `" . DB_PREFIX . "wx_games_user_items` WHERE `game` = 'mj'");
+        }
+    }
     emMsg('设置已保存', './plugin.php?plugin=wx_games&game=mj&tab=basic&saved=1');
 } elseif ($action === 'save_content') {
     $storage = Storage::getInstance('wx_mojang');
@@ -119,29 +134,28 @@ if ($action === 'save_setting') {
             $operator_nick = isset($u['nickname']) ? $u['nickname'] : 'admin';
         }
         wx_mojang_admin_change_score($target_uid, $score_change, $reason, $operator_nick);
-        wx_mojang_ok();
+        emMsg('积分修改成功', './plugin.php?plugin=wx_games&game=mj&tab=score');
     } else {
-        wx_mojang_error('Invalid parameters');
+        emMsg('参数无效', './plugin.php?plugin=wx_games&game=mj&tab=score');
     }
 } elseif ($action === 'delete_user') {
     $del_uid = Input::postIntVar('uid', 0);
     if ($del_uid > 0) {
         $db = Database::getInstance();
-        $db->query("DELETE FROM `" . DB_PREFIX . "wx_mojang_scores` WHERE `uid` = $del_uid AND `is_ai` = 0");
+        $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_scores` WHERE `uid` = $del_uid AND `is_ai` = 0");
         // 同时清理该用户的游戏记录和日志
         $db->query("DELETE FROM `" . DB_PREFIX . "wx_mojang_games` WHERE `uid` = $del_uid");
-        $db->query("DELETE FROM `" . DB_PREFIX . "wx_mojang_logs` WHERE `uid` = $del_uid");
+        $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_logs` WHERE `uid` = $del_uid");
     }
     wx_mojang_ok();
 } elseif ($action === 'add_shop_item') {
     $db = Database::getInstance();
-    $table = DB_PREFIX . 'wx_mojang_shop_items';
+    $table = DB_PREFIX . 'wx_games_shop_items';
     $name = addslashes(trim(Input::postStrVar('name', '')));
-    if (empty($name)) { wx_mojang_error('商品名称不能为空'); }
+    if (empty($name)) { emMsg('商品名称不能为空', './plugin.php?plugin=wx_games&game=mj&tab=shop'); }
     $description = addslashes(trim(Input::postStrVar('description', '')));
     $icon = addslashes(trim(Input::postStrVar('icon', '')));
     $item_type = addslashes(trim(Input::postStrVar('item_type', '')));
-    // stripslashes 修复表单提交的存量反斜杠数据，再由 $db->escape_string 统一安全转义
     $effect_data = $db->escape_string(stripslashes(trim(Input::postStrVar('effect_data', '{}'))));
     $price_emlog = Input::postIntVar('price_emlog', 0);
     $price_majiang = Input::postIntVar('price_majiang', 0);
@@ -150,16 +164,16 @@ if ($action === 'save_setting') {
     $sort_order = Input::postIntVar('sort_order', 0);
     $now = time();
 
-    $db->query("INSERT INTO `{$table}` (`name`, `description`, `icon`, `item_type`, `effect_data`, `price_emlog`, `price_majiang`, `stock`, `max_per_user`, `sort_order`, `is_active`, `created`)
-                VALUES ('{$name}', '{$description}', '{$icon}', '{$item_type}', '{$effect_data}', {$price_emlog}, {$price_majiang}, {$stock}, {$max_per_user}, {$sort_order}, 1, NOW())");
-    wx_mojang_ok();
+    $db->query("INSERT INTO `{$table}` (`game`, `name`, `description`, `icon`, `item_type`, `effect_data`, `price_emlog`, `price_game`, `stock`, `max_per_user`, `sort_order`, `status`, `created`)
+                VALUES ('mj', '{$name}', '{$description}', '{$icon}', '{$item_type}', '{$effect_data}', {$price_emlog}, {$price_majiang}, {$stock}, {$max_per_user}, {$sort_order}, 1, NOW())");
+    emMsg('商品已添加', './plugin.php?plugin=wx_games&game=mj&tab=shop');
 } elseif ($action === 'edit_shop_item') {
     $db = Database::getInstance();
-    $table = DB_PREFIX . 'wx_mojang_shop_items';
+    $table = DB_PREFIX . 'wx_games_shop_items';
     $id = Input::postIntVar('item_id', 0);
-    if ($id <= 0) { wx_mojang_error('参数错误'); }
+    if ($id <= 0) { emMsg('参数错误', './plugin.php?plugin=wx_games&game=mj&tab=shop'); }
     $name = addslashes(trim(Input::postStrVar('name', '')));
-    if (empty($name)) { wx_mojang_error('商品名称不能为空'); }
+    if (empty($name)) { emMsg('商品名称不能为空', './plugin.php?plugin=wx_games&game=mj&tab=shop'); }
     $description = addslashes(trim(Input::postStrVar('description', '')));
     $icon = addslashes(trim(Input::postStrVar('icon', '')));
     $item_type = addslashes(trim(Input::postStrVar('item_type', '')));
@@ -174,45 +188,132 @@ if ($action === 'save_setting') {
     $db->query("UPDATE `{$table}` SET
         `name` = '{$name}', `description` = '{$description}', `icon` = '{$icon}',
         `item_type` = '{$item_type}', `effect_data` = '{$effect_data}',
-        `price_emlog` = {$price_emlog}, `price_majiang` = {$price_majiang},
+        `price_emlog` = {$price_emlog}, `price_game` = {$price_majiang},
         `stock` = {$stock}, `max_per_user` = {$max_per_user},
-        `sort_order` = {$sort_order}, `is_active` = {$status}
+        `sort_order` = {$sort_order}, `status` = {$status}
         WHERE `id` = {$id}");
-    wx_mojang_ok();
+    emMsg('商品已更新', './plugin.php?plugin=wx_games&game=mj&tab=shop');
 } elseif ($action === 'delete_shop_item') {
-    $id = Input::postIntVar('item_id', 0);
+    $id = isset($_POST['item_id']) ? intval($_POST['item_id']) : (isset($_GET['item_id']) ? intval($_GET['item_id']) : 0);
     if ($id > 0) {
         $db = Database::getInstance();
-        $db->query("DELETE FROM `" . DB_PREFIX . "wx_mojang_shop_items` WHERE id={$id}");
+        $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_shop_items` WHERE id={$id}");
     }
-    wx_mojang_ok();
-} elseif ($action === 'reset' || (empty($action) && Input::getStrVar('do', '') === 'reset')) {
+    emMsg('商品已删除', './plugin.php?plugin=wx_games&game=mj&tab=shop');
+} elseif ($action === 'reset') {
+    // POST 方式重置（由 JS resetAllScores 触发）
     $db = Database::getInstance();
-    $db->query("TRUNCATE TABLE `" . DB_PREFIX . "wx_mojang_scores`");
+    $db->query("TRUNCATE TABLE `" . DB_PREFIX . "wx_games_scores`");
     $db->query("TRUNCATE TABLE `" . DB_PREFIX . "wx_mojang_games`");
-    $db->query("TRUNCATE TABLE `" . DB_PREFIX . "wx_mojang_logs`");
+    $db->query("TRUNCATE TABLE `" . DB_PREFIX . "wx_games_logs`");
     wx_mojang_ok();
+}
+
+// ========== 日志分页 AJAX ==========
+if (Input::getStrVar('mj_action') === 'get_logs_page') {
+    $log_page = max(1, Input::getIntVar('log_page', 1));
+    $log_search = addslashes(trim(Input::getStrVar('search', '')));
+    $logPageSize = 10;
+    $log_offset = ($log_page - 1) * $logPageSize;
+    $table_logs = DB_PREFIX . 'wx_games_logs';
+    $log_where = "WHERE l.`game` = 'mj'";
+    if ($log_search) {
+        $log_where .= " AND (l.`nickname` LIKE '%$log_search%' OR l.`uid` = '" . intval($log_search) . "')";
+    }
+    $db = Database::getInstance();
+    $total = (int)$db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `$table_logs` l $log_where")['cnt'];
+    $totalPages = max(1, ceil($total / $logPageSize));
+    $rows = $db->query("SELECT l.*, IFNULL(u.nickname, '未知') AS nickname FROM `$table_logs` l LEFT JOIN `" . DB_PREFIX . "user` u ON l.uid = u.uid $log_where ORDER BY l.created_at DESC LIMIT $log_offset, $logPageSize");
+    $data = [];
+    while ($r = $db->fetch_array($rows)) {
+        $data[] = $r;
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['code' => 0, 'data' => $data, 'totalPages' => $totalPages, 'currentPage' => $log_page], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ========== 用户列表分页 AJAX ==========
+if (Input::getStrVar('mj_action') === 'get_users_page') {
+    $page = max(1, Input::getIntVar('page', 1));
+    $search = addslashes(trim(Input::getStrVar('search', '')));
+    $pageSize = 10;
+    $offset = ($page - 1) * $pageSize;
+    $db = Database::getInstance();
+    $table_scores = DB_PREFIX . 'wx_games_scores';
+    $where = "WHERE `game` = 'mj' AND `is_ai` = 0";
+    if ($search) {
+        $where = "WHERE (`nickname` LIKE '%$search%' OR `uid` = '$search') AND `game` = 'mj' AND `is_ai` = 0";
+    }
+    $total = (int)$db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `$table_scores` $where")['cnt'];
+    $totalPages = max(1, ceil($total / $pageSize));
+    $rows = $db->query("SELECT * FROM `$table_scores` $where ORDER BY `score` DESC LIMIT $offset, $pageSize");
+    $data = [];
+    while ($row = $db->fetch_array($rows)) {
+        $uid = (int)$row['uid'];
+        $user_row = $db->once_fetch_array("SELECT `nickname`, `photo` FROM `" . DB_PREFIX . "user` WHERE `uid` = $uid LIMIT 1");
+        $data[] = [
+            'id' => (int)$row['id'],
+            'uid' => $uid,
+            'nickname' => $user_row ? $user_row['nickname'] : $row['nickname'],
+            'avatar' => $user_row ? $user_row['photo'] : '',
+            'score' => (int)$row['score'],
+            'total_games' => (int)$row['total_games'],
+            'wins' => (int)$row['wins'],
+            'losses' => (int)$row['losses'],
+            'draws' => (int)$row['draws'],
+            'best_score' => (int)$row['best_score'],
+        ];
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['code' => 0, 'data' => $data, 'totalPages' => $totalPages, 'currentPage' => $page], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ========== 数据清理（复选框分项）==========
+if (Input::postStrVar('mj_action') === 'reset_data') {
+    $db_clr = Database::getInstance();
+    $actions = [];
+    if (isset($_POST['reset_scores'])) $actions[] = '积分';
+    if (isset($_POST['reset_games']))  $actions[] = '战绩';
+    if (isset($_POST['reset_items']))  $actions[] = '道具';
+    if (!empty($actions)) {
+        if (isset($_POST['reset_scores'])) {
+            $db_clr->query("DELETE FROM `" . DB_PREFIX . "wx_games_scores` WHERE `game` = 'mj' AND `is_ai` = 0");
+            $db_clr->query("DELETE FROM `" . DB_PREFIX . "wx_games_logs`");
+        }
+        if (isset($_POST['reset_games'])) {
+            $db_clr->query("DELETE FROM `" . DB_PREFIX . "wx_mojang_games`");
+        }
+        if (isset($_POST['reset_items'])) {
+            $db_clr->query("DELETE FROM `" . DB_PREFIX . "wx_games_shop_items` WHERE `game` = 'mj'");
+            $db_clr->query("DELETE FROM `" . DB_PREFIX . "wx_games_user_items` WHERE `game` = 'mj'");
+        }
+        emMsg('已清理：' . implode('、', $actions), './plugin.php?plugin=wx_games&game=mj');
+    } else {
+        emMsg('请至少勾选一项', './plugin.php?plugin=wx_games&game=mj');
+    }
 }
 
 // ========== 积分管理数据 ==========
-$table_scores_mj = DB_PREFIX . 'wx_mojang_scores';
-$table_logs_mj = DB_PREFIX . 'wx_mojang_logs';
+$table_scores = DB_PREFIX . 'wx_games_scores';
+$table_logs = DB_PREFIX . 'wx_games_logs';
 
 // 搜索 & 分页
-$search_mj = addslashes(trim(Input::getStrVar('search', '')));
-$where_mj = "WHERE `is_ai` = 0";
-if ($search_mj) {
-    $where_mj = "WHERE (`nickname` LIKE '%$search_mj%' OR `uid` = '$search_mj') AND `is_ai` = 0";
+$search = addslashes(trim(Input::getStrVar('search', '')));
+$where = "WHERE `game` = 'mj' AND `is_ai` = 0";
+if ($search) {
+    $where = "WHERE (`nickname` LIKE '%$search%' OR `uid` = '$search') AND `game` = 'mj' AND `is_ai` = 0";
 }
-$page_mj = max(1, Input::getIntVar('page', 1));
-$pageSize_mj = 20;
-$offset_mj = ($page_mj - 1) * $pageSize_mj;
+$page = max(1, Input::getIntVar('page', 1));
+$pageSize = 10;
+$offset = ($page - 1) * $pageSize;
 
 // 用户列表
-$result_mj = $db->query("SELECT * FROM `$table_scores_mj` $where_mj ORDER BY `score` DESC LIMIT $offset_mj, $pageSize_mj");
-$users_mj = [];
-while ($row = $db->fetch_array($result_mj)) {
-    $users_mj[] = [
+$result = $db->query("SELECT * FROM `$table_scores` $where ORDER BY `score` DESC LIMIT $offset, $pageSize");
+$users = [];
+while ($row = $db->fetch_array($result)) {
+    $users[] = [
         'id' => (int)$row['id'], 'uid' => (int)$row['uid'], 'nickname' => wx_mojang_resolve_nickname((int)$row['uid']),
         'avatar' => wx_mojang_resolve_avatar((int)$row['uid']), 'score' => (int)$row['score'],
         'total_games' => (int)$row['total_games'], 'wins' => (int)$row['wins'],
@@ -220,33 +321,102 @@ while ($row = $db->fetch_array($result_mj)) {
         'best_score' => (int)$row['best_score'],
     ];
 }
-$count_row_mj = $db->once_fetch_array("SELECT COUNT(*) as total FROM `$table_scores_mj` $where_mj");
-$total_users_count_mj = (int)$count_row_mj['total'];
-$totalPages_mj = ceil($total_users_count_mj / $pageSize_mj);
+$count_row = $db->once_fetch_array("SELECT COUNT(*) as total FROM `$table_scores` $where");
+$total_users_count = (int)$count_row['total'];
+$totalPages = ceil($total_users_count / $pageSize);
 
-// 日志（最近50条）—— JOIN user 表获取昵称（实时）
-$logs_result_mj = $db->query("SELECT l.*, IFNULL(u.nickname, '未知') AS nickname FROM `$table_logs_mj` l LEFT JOIN `" . DB_PREFIX . "user` u ON l.uid = u.uid ORDER BY l.`created` DESC LIMIT 50");
-$logs_mj = [];
-while ($row = $db->fetch_array($logs_result_mj)) {
-    $logs_mj[] = [
-        'id' => (int)$row['id'], 'uid' => (int)$row['uid'], 'nickname' => $row['nickname'],
-        'score_change' => (int)$row['score_change'], 'score_before' => (int)$row['score_before'],
-        'score_after' => (int)$row['score_after'], 'reason' => $row['reason'],
-        'operator' => $row['operator'], 'created' => $row['created'],
-    ];
-}
+// 日志（分页，每页10条）
+$logPage = max(1, Input::getIntVar('log_page', 1));
+$logPageSize = 10;
+$logOffset = ($logPage - 1) * $logPageSize;
+$total_log_count = 0;
+$logTotalPages = 1;
+$logs = [];
+try {
+    $logCountRow = $db->once_fetch_array("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_games_logs` WHERE `game` = 'mj'");
+    $total_log_count = (int)($logCountRow ? $logCountRow['total'] : 0);
+    $logTotalPages = max(1, ceil($total_log_count / $logPageSize));
+    $logs_result = $db->query("SELECT l.*, IFNULL(u.nickname, '未知') AS nickname FROM `" . DB_PREFIX . "wx_games_logs` l LEFT JOIN `" . DB_PREFIX . "user` u ON l.uid = u.uid WHERE l.`game` = 'mj' ORDER BY l.`created_at` DESC LIMIT $logOffset, $logPageSize");
+    while ($row = $db->fetch_array($logs_result)) {
+        $logs[] = [
+            'id' => (int)$row['id'], 'uid' => (int)$row['uid'], 'nickname' => $row['nickname'],
+            'score_change' => (int)$row['score_change'], 'score_before' => (int)$row['score_before'],
+            'score_after' => (int)$row['score_after'], 'reason' => $row['reason'],
+            'operator' => $row['operator'], 'created' => $row['created_at'],
+        ];
+    }
+} catch (\Throwable $e) {}
+
+// ========== 商城相关数据 ==========
+$filter_type = addslashes(trim(Input::getStrVar('filter_type', '')));
+$shopTable = DB_PREFIX . 'wx_games_shop_items';
+$shop_items = [];
+try {
+    $shop_where = $filter_type ? "WHERE `game` = 'mj' AND `item_type` = '$filter_type'" : "WHERE `game` = 'mj'";
+    $items_q = $db->query("SELECT * FROM `" . $shopTable . "` $shop_where ORDER BY sort_order ASC, id ASC");
+    while ($it = $db->fetch_array($items_q)) {
+        if (isset($it['effect_data'])) { $it['effect_data'] = stripslashes($it['effect_data']); }
+        $shop_items[] = $it;
+    }
+} catch (\Throwable $e) {}
+
+// 背包统计 + 购买记录（带分页）
+$table_inv = DB_PREFIX . 'wx_games_user_items';
+$pageSize = 20;
+$inventory_stats = []; $purchase_history = [];
+$stat_page = max(1, Input::getIntVar('stat_page', 1));
+$stat_offset = ($stat_page - 1) * $pageSize;
+$buy_page = max(1, Input::getIntVar('buy_page', 1));
+$buy_offset = ($buy_page - 1) * $pageSize;
+$stat_total_pages = 1; $buy_total_pages = 1;
+try {
+    $stat_count = $db->once_fetch_array("SELECT COUNT(DISTINCT i.item_id) AS cnt FROM `$table_inv` i JOIN `$shopTable` s ON i.item_id = s.id WHERE i.`game` = 'mj'");
+    $stat_total = (int)($stat_count['cnt'] ?? 0);
+    $stat_total_pages = max(1, ceil($stat_total / $pageSize));
+    $inv_result = $db->query("SELECT i.item_id, s.name, s.icon, SUM(i.quantity) AS total_bought, SUM(i.used) AS total_used, COUNT(DISTINCT i.uid) AS buyer_count FROM `$table_inv` i JOIN `$shopTable` s ON i.item_id = s.id WHERE i.`game` = 'mj' GROUP BY i.item_id ORDER BY total_bought DESC LIMIT $pageSize OFFSET $stat_offset");
+    while ($row = $db->fetch_array($inv_result)) { $inventory_stats[] = $row; }
+} catch (\Throwable $e) {}
+try {
+    $buy_count = $db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `$table_inv` i JOIN `$shopTable` s ON i.item_id = s.id WHERE i.`game` = 'mj'");
+    $buy_total = (int)($buy_count['cnt'] ?? 0);
+    $buy_total_pages = max(1, ceil($buy_total / $pageSize));
+    $purchase_result = $db->query("SELECT i.*, s.name AS item_name, s.icon AS item_icon FROM `$table_inv` i JOIN `$shopTable` s ON i.item_id = s.id WHERE i.`game` = 'mj' ORDER BY i.id DESC LIMIT $pageSize OFFSET $buy_offset");
+    while ($row = $db->fetch_array($purchase_result)) { $purchase_history[] = $row; }
+} catch (\Throwable $e) {}
 
 // ============================================================
 // 页面渲染
 // ============================================================
 function wx_mojang_admin_render() {
     global $item_types, $item_type_icons;
-    global $users_mj, $logs_mj, $search_mj, $page_mj, $totalPages_mj, $total_users_count_mj;
+    global $users, $logs, $search, $page, $totalPages, $total_users_count;
+    global $logPage, $logTotalPages, $total_log_count;
+    global $shop_items, $filter_type, $inventory_stats, $purchase_history, $stat_page, $stat_total_pages, $buy_page, $buy_total_pages, $pageSize;
     $tab = Input::getStrVar('tab', 'basic');
     $config = wx_mojang_get_config();
     $ai_players = wx_mojang_get_ai_players();
     $db = Database::getInstance();
     $penalty_multiplier = isset($config['penalty_multiplier']) ? floatval($config['penalty_multiplier']) : 1.0;
+    // 如果顶层查询 count 为 0，使用硬编码表名重查（兼容变量作用域问题）
+    if ($total_log_count === 0) {
+        try {
+            $logCountRow2 = $db->once_fetch_array("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_games_logs` WHERE `game` = 'mj'");
+            if ($logCountRow2 && (int)$logCountRow2['total'] > 0) {
+                $total_log_count = (int)$logCountRow2['total'];
+                $logTotalPages = max(1, ceil($total_log_count / 10));
+                $logs_result2 = $db->query("SELECT * FROM `" . DB_PREFIX . "wx_games_logs` WHERE `game` = 'mj' ORDER BY `created_at` DESC LIMIT " . (($logPage - 1) * 10) . ", 10");
+                $logs = [];
+                while ($row = $db->fetch_array($logs_result2)) {
+                    $logs[] = [
+                        'id' => (int)$row['id'], 'uid' => (int)$row['uid'], 'nickname' => $row['nickname'],
+                        'score_change' => (int)$row['score_change'], 'score_before' => (int)$row['score_before'],
+                        'score_after' => (int)$row['score_after'], 'reason' => $row['reason'],
+                        'operator' => $row['operator'], 'created_at' => (int)$row['created_at'],
+                    ];
+                }
+            }
+        } catch (\Throwable $e) {}
+    }
     $ai_count = count($ai_players);
 
     // 如果POST成功有消息
@@ -258,8 +428,9 @@ function wx_mojang_admin_render() {
 
     ?>
 
+    <div class="container-fluid">
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
-        <h1 class="h3 mb-0 text-gray-800">H5 国标麻将 - 插件设置</h1>
+        <h1 class="h3 mb-0 text-gray-800">🀄 H5 国标麻将 - 插件设置</h1>
     </div>
 
     <?php if (!empty($success_msg)): ?>
@@ -270,49 +441,32 @@ function wx_mojang_admin_render() {
     <?php endif; ?>
 
 <!-- Tab 导航 -->
-<style>
-.mj-tab-bar{display:flex;gap:0;border-bottom:2px solid #eee;margin-bottom:20px;flex-wrap:wrap}
-.mj-tab-btn{padding:10px 20px;cursor:pointer;border:none;background:none;font-size:0.9rem;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
-.mj-tab-btn:hover{color:#e17055}
-.mj-tab-btn.active{color:#e17055;border-bottom-color:#e17055;font-weight:600}
-</style>
-<div class="mj-tab-bar">
-    <button class="mj-tab-btn active" onclick="switchMjTab('basic')">基本设置</button>
-    <button class="mj-tab-btn" onclick="switchMjTab('ai')">AI玩家设置</button>
-    <button class="mj-tab-btn" onclick="switchMjTab('score')">积分管理</button>
-    <button class="mj-tab-btn" onclick="switchMjTab('shop')">商城管理</button>
-</div>
-<script>
-function switchMjTab(tab){
-    document.querySelectorAll('.mj-tab').forEach(function(el){el.style.display='none'});
-    document.querySelectorAll('.mj-tab-btn').forEach(function(el){el.classList.remove('active')});
-    var t=document.getElementById('mj-tab-'+tab);
-    if(t)t.style.display='';
-    document.querySelector('.mj-tab-btn[onclick*="'+tab+'"]').classList.add('active');
-}
-// URL 参数恢复上次 tab
-(function(){
-    var m=location.search.match(/[?&]tab=([^&]+)/);
-    if(m)switchMjTab(m[1]);
-})();
-</script>
+<ul class="nav nav-tabs mb-4" id="mjSettingTabs" role="tablist">
+    <li class="nav-item"><a class="nav-link active" id="mj-basic-tab" data-toggle="tab" href="#mj-basic" role="tab">基本设置</a></li>
+    <li class="nav-item"><a class="nav-link" id="mj-ai-tab" data-toggle="tab" href="#mj-ai" role="tab">AI玩家设置</a></li>
+    <li class="nav-item"><a class="nav-link" id="mj-score-tab" data-toggle="tab" href="#mj-score" role="tab">积分管理</a></li>
+    <li class="nav-item"><a class="nav-link" id="mj-shop-tab" data-toggle="tab" href="#mj-shop" role="tab">商城管理</a></li>
+</ul>
 
-<div class="container-fluid">
+<div class="tab-content" id="mjSettingTabsContent">
 
-<div id="mj-tab-basic" class="mj-tab">
+<div class="tab-pane fade show active" id="mj-basic" role="tabpanel">
     <!-- ========== 基本设置 ========== -->
-            <div class="row">
-                <div class="col-lg-6">
-                    <div class="wx-card card-dark">
-                        <div class="card-header">基本设置</div>
-                        <div class="card-body">
-                            <form method="post" action="./plugin.php?plugin=wx_games&game=mj">
-                                <input type="hidden" name="do" value="save_setting">
+    <form method="post" action="./plugin.php?plugin=wx_games&game=mj">
+        <input type="hidden" name="mj_action" value="save_setting">
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="wx-card card-dark">
+                <div class="card-header">基本设置</div>
+                <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
                                 <div class="form-group">
                                     <label>游戏标题</label>
                                     <input type="text" class="form-control" name="title" value="<?php echo htmlspecialchars($config['title']); ?>">
-                                    <small class="form-text text-muted">显示在游戏页面和导航菜单中的标题</small>
                                 </div>
+                            </div>
+                            <div class="col-md-6">
                                 <div class="form-group">
                                     <label>游客模式</label>
                                     <select class="form-control" name="guest_play">
@@ -320,123 +474,102 @@ function switchMjTab(tab){
                                         <option value="0" <?php echo $config['guest_play'] == '0' ? 'selected' : ''; ?>>关闭</option>
                                     </select>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>底分</label>
+                                    <input class="form-control" name="base_score" type="number" value="<?php echo (int)$config['base_score']; ?>">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
                                 <div class="form-group">
                                     <label>排行榜最大条目数</label>
                                     <input type="number" class="form-control" name="max_entries" value="<?php echo (int)$config['max_entries']; ?>" min="10" max="500">
                                 </div>
-                                <div class="form-group">
-                                    <label>积分充值链接</label>
-                                    <input type="url" class="form-control" name="recharge_link" value="<?php echo htmlspecialchars(isset($config['recharge_link']) ? $config['recharge_link'] : ''); ?>" placeholder="例如：https://example.com/recharge">
-                                    <small class="form-text text-muted">前台"充值"按钮的跳转链接，留空则不显示充值按钮</small>
-                                </div>
-                                <button type="submit" class="wx-btn">保存设置</button>
-                            </form>
+                            </div>
                         </div>
-                    </div>
-                </div>
-                <div class="col-lg-6">
-                    <div class="wx-card card-dark">
-                        <div class="card-header">防逃跑惩罚设置</div>
-                        <div class="card-body">
-                            <form method="post" action="./plugin.php?plugin=wx_games&game=mj">
-                                <input type="hidden" name="do" value="save_setting">
-                                <div class="form-group">
-                                    <label>惩罚倍率</label>
-                                    <div class="input-group">
-                                        <input type="number" class="form-control" name="penalty_multiplier" value="<?php echo number_format($penalty_multiplier, 1, '.', ''); ?>" min="0.1" max="10" step="0.1">
-                                        <span class="input-group-text" style="border-radius:0 8px 8px 0;background:#f8f9fe;border:1px solid #e0e2ea;border-left:none;padding:10px 14px;">x</span>
-                                    </div>
-                                    <small class="form-text text-muted">惩罚积分 = 底分 × 此倍率。例如倍率设为 2.0，底分 100，逃跑扣 100×2 = 200 分</small>
-                                </div>
-                                <div class="wx-info-block">
-                                    <strong>当前生效：</strong>逃跑扣除 <strong><?php echo $config['base_score'] * $penalty_multiplier; ?></strong> 分
-                                </div>
-                                <button type="submit" class="wx-btn" style="margin-top:12px;">保存设置</button>
-                            </form>
+                        <div class="form-group">
+                            <label>积分充值链接</label>
+                            <input type="url" class="form-control" name="recharge_link" value="<?php echo htmlspecialchars(isset($config['recharge_link']) ? $config['recharge_link'] : ''); ?>" placeholder="https://...">
                         </div>
-                    </div>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-lg-6">
-                    <div class="wx-card card-dark">
-                        <div class="card-header">使用说明</div>
-                        <div class="card-body">
-                            <ul style="margin:0;padding-left:18px;line-height:2;">
-                                <li>游戏前台地址：<a href="<?php echo BLOG_URL; ?>?plugin=wx_games&game=mj" target="_blank"><?php echo BLOG_URL; ?>?plugin=wx_games&game=mj</a></li>
-                                <li>积分数据存储在数据库中，确保数据持久化</li>
-                                <li>用户登录后游戏积分会自动保存到服务器</li>
-                                <li>游客模式下数据仅保存在本地浏览器</li>
-                                <li>国标麻将规则：8番起胡，自摸三家付，点炮全铳</li>
-                            </ul>
+                        <hr>
+                        <div class="form-group" style="margin-bottom:8px">
+                            <label style="font-weight:600;color:#e17055">防逃跑惩罚倍率</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" name="penalty_multiplier" value="<?php echo number_format($penalty_multiplier, 1, '.', ''); ?>" min="0.1" max="10" step="0.1" style="max-width:180px">
+                                <span class="input-group-text" style="border-radius:0 8px 8px 0;background:#f8f9fe;border:1px solid #e0e2ea;border-left:none;padding:10px 14px;">x</span>
+                                <span style="margin-left:12px;align-self:center;font-size:13px;color:#888">惩罚 = 底分 × 此倍率</span>
+                            </div>
                         </div>
-                    </div>
-                </div>
-                <div class="col-lg-6">
-                    <div class="wx-card card-dark">
-                        <div class="card-header">数据管理</div>
-                        <div class="card-body">
-                            <p>数据库中的玩家记录数：
+                        <div style="font-size:13px;color:#888;margin-bottom:8px">
+                            <strong>当前：</strong>逃跑扣 <strong style="color:#e17055"><?php echo $config['base_score'] * $penalty_multiplier; ?></strong> 分
+                        </div>
+                    <hr>
+                    <!-- 数据管理 -->
+                    <div>
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+                            <span style="font-size:14px;font-weight:600">🗃️ 数据管理</span>
+                            <span style="color:#aaa;font-size:13px">玩家记录数：
                                 <?php
                                 try {
-                                    $cr = $db->query("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_mojang_scores` WHERE `is_ai` = 0");
-                                    $crow = $db->fetch_array($cr);
-                                    echo '<strong>' . (int)$crow['total'] . '</strong>';
-                                } catch (\Throwable $e) {
-                                    echo '0';
-                                }
+                                    $mj_cr = $db->query("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_games_scores` WHERE `game` = 'mj' AND `is_ai` = 0");
+                                    $mj_crow = $db->fetch_array($mj_cr);
+                                    echo '<strong>' . (int)$mj_crow['total'] . '</strong>';
+                                } catch (\Throwable $e) { echo '0'; }
                                 ?>
-                            </p>
-                            <a href="./plugin.php?plugin=wx_games&game=mj&do=reset" class="wx-btn wx-btn-danger" onclick="return confirm('确定要清空所有积分数据吗？此操作不可恢复！')">清空所有积分数据</a>
+                            </span>
+                        </div>
+                        <div>
+                            <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+                                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;font-weight:400">
+                                    <input type="checkbox" name="reset_scores" value="1"> 🏆 清空积分
+                                </label>
+                                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;font-weight:400">
+                                    <input type="checkbox" name="reset_games" value="1"> 📊 清空战绩
+                                </label>
+                                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;font-weight:400">
+                                    <input type="checkbox" name="reset_items" value="1"> 🎒 清空道具
+                                </label>
+                                <button type="submit" name="do_reset" value="1" class="wx-btn wx-btn-danger" style="padding:4px 16px;font-size:12px" onclick="return confirm('⚠️ 确定要清理所选数据吗？此操作不可恢复！')">执行清理</button>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-
-            <!-- ========== 公告与更新内容编辑 ========== -->
-            <div class="row">
-                <div class="col-lg-6">
-                    <div class="wx-card card-dark">
-                        <div class="card-header">游戏公告</div>
-                        <div class="card-body">
-                            <form method="post" action="./plugin.php?plugin=wx_games&game=mj">
-                                <input type="hidden" name="do" value="save_content">
-                                <div class="form-group">
-                                    <label>公告内容</label>
-                                    <textarea class="form-control" name="notice" rows="5" style="resize:vertical;"><?php echo htmlspecialchars($config['notice']); ?></textarea>
-                                    <small class="form-text text-muted">显示在游戏首页欢迎界面</small>
-                                </div>
-                                <button type="submit" class="wx-btn">保存公告</button>
-                            </form>
+        </div>
+        <div class="col-lg-6">
+            <div class="wx-card card-dark">
+                <div class="card-header">📢 公告与更新</div>
+                <div class="card-body">
+                        <div class="form-group">
+                            <label>游戏公告</label>
+                            <textarea class="form-control" name="notice" rows="4" style="width:100%;resize:vertical;"><?php echo htmlspecialchars($config['notice']); ?></textarea>
+                            <small class="form-text text-muted">显示在游戏首页欢迎界面</small>
                         </div>
-                    </div>
-                </div>
-                <div class="col-lg-6">
-                    <div class="wx-card card-dark">
-                        <div class="card-header">最近更新</div>
-                        <div class="card-body">
-                            <form method="post" action="./plugin.php?plugin=wx_games&game=mj">
-                                <input type="hidden" name="do" value="save_content">
-                                <div class="form-group">
-                                    <label>更新内容（每行一条）</label>
-                                    <textarea class="form-control" name="recent_updates" rows="8" style="resize:vertical;font-family:monospace;"><?php echo htmlspecialchars($config['recent_updates']); ?></textarea>
-                                    <small class="form-text text-muted">每行一条更新记录，格式：版本号 - 内容</small>
-                                </div>
-                                <button type="submit" class="wx-btn">保存更新</button>
-                            </form>
+                        <div class="form-group" style="margin-bottom:8px">
+                            <label>最近更新（每行一条）</label>
+                            <textarea class="form-control" name="recent_updates" rows="6" style="width:100%;resize:vertical;"><?php echo htmlspecialchars($config['recent_updates']); ?></textarea>
+                            <small class="form-text text-muted">格式：版本号 - 内容</small>
                         </div>
-                    </div>
                 </div>
             </div>
+        </div>
+    </div>
+    <div style="text-align:center;margin-top:16px">
+        <button type="submit" class="wx-btn" style="padding:10px 48px;font-size:15px">💾 保存全部设置</button>
+    </div>
+    </form>
 </div>
 
-<div id="mj-tab-ai" class="mj-tab" style="display:none">
+<div class="tab-pane fade" id="mj-ai" role="tabpanel">
     <!-- ========== AI玩家设置 ========== -->
             <div class="wx-card card-dark">
                 <div class="card-header">AI玩家设置</div>
                 <div class="card-body">
                     <form method="post" action="./plugin.php?plugin=wx_games&game=mj" id="aiForm">
-                        <input type="hidden" name="do" value="save_ai_setting">
+                        <input type="hidden" name="mj_action" value="save_ai_setting">
                         <div class="d-flex align-items-center" style="gap:16px;margin-bottom:20px;flex-wrap:wrap;">
                             <div>
                                 <label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:4px;">AI玩家数量</label>
@@ -536,18 +669,110 @@ function switchMjTab(tab){
             </style>
 </div>
 
-<div id="mj-tab-score" class="mj-tab" style="display:none">
+<div class="tab-pane fade" id="mj-score" role="tabpanel">
     <!-- ========== 积分管理 ========== -->
-    <!-- 搜索 & 用户列表 -->
+    <div class="row">
+        <div class="col-lg-6">
+            <!-- 积分查询与修改 -->
+            <div class="wx-card card-dark mb-4">
+                <div class="card-header">积分查询与修改</div>
+                <div class="card-body">
+                    <form method="post" class="mb-3" style="max-width:400px">
+                        <input type="hidden" name="mj_action" value="change_score">
+                        <div class="form-group">
+                            <label>用户ID</label>
+                            <input class="form-control" name="target_uid" type="number" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label>积分变动（正=增加，负=扣除）</label>
+                            <input class="form-control" name="score_change" type="number" required>
+                        </div>
+                        <div class="form-group">
+                            <label>原因</label>
+                            <input class="form-control" name="reason" value="管理员手动调整">
+                        </div>
+                        <button type="submit" class="wx-btn">提交修改</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <!-- 积分变动日志 -->
+            <div class="wx-card card-dark mb-4">
+                <div class="card-header">积分变动日志（共 <?php echo $total_log_count; ?> 条）</div>
+                <div class="card-body" style="padding:0;">
+                    <div style="overflow-x:auto;">
+                        <table class="table-admin">
+                            <thead>
+                                <tr>
+                                    <th>时间</th>
+                                    <th>用户</th>
+                                    <th>变动</th>
+                                    <th>变动前</th>
+                                    <th>变动后</th>
+                                    <th>原因</th>
+                                    <th>操作者</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logTableBody">
+                                <?php foreach ($logs as $log): ?>
+                                <tr>
+                                    <td style="white-space:nowrap;"><?php echo $log['created']; ?></td>
+                                    <td><?php echo htmlspecialchars($log['nickname']); ?></td>
+                                    <td>
+                                        <?php if ($log['score_change'] > 0): ?>
+                                        <span class="win-text">+<?php echo $log['score_change']; ?></span>
+                                        <?php else: ?>
+                                        <span class="lose-text"><?php echo $log['score_change']; ?></span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?php echo $log['score_before']; ?></td>
+                                    <td><?php echo $log['score_after']; ?></td>
+                                    <td><?php echo htmlspecialchars($log['reason']); ?></td>
+                                    <td><?php echo htmlspecialchars($log['operator']); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                                <?php if (empty($logs)): ?>
+                                <tr><td colspan="7" class="wx-empty">暂无日志</td></tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <?php if ($logTotalPages > 1): ?>
+                    <div class="pagination-admin" style="margin-top:0;" id="logPagination">
+                        <?php
+                        $logStart = max(1, $logPage - 2);
+                        $logEnd = min($logTotalPages, $logPage + 2);
+                        if ($logStart > 1) {
+                            echo '<a href="javascript:void(0)" onclick="loadLogsPage(1)" class="pagi-link">1</a>';
+                            if ($logStart > 2) echo '<span style="padding:6px 8px;color:#999;">...</span>';
+                        }
+                        for ($i = $logStart; $i <= $logEnd; $i++) {
+                            $active = $i == $logPage ? 'active' : '';
+                            echo '<a href="javascript:void(0)" onclick="loadLogsPage(' . $i . ')" class="pagi-link ' . $active . '">' . $i . '</a>';
+                        }
+                        if ($logEnd < $logTotalPages) {
+                            if ($logEnd < $logTotalPages - 1) echo '<span style="padding:6px 8px;color:#999;">...</span>';
+                            echo '<a href="javascript:void(0)" onclick="loadLogsPage(' . $logTotalPages . ')" class="pagi-link">' . $logTotalPages . '</a>';
+                        }
+                        ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 用户积分列表 -->
     <div class="wx-card card-dark">
         <div class="card-header">用户积分列表</div>
         <div class="card-body" style="padding:0;">
             <div style="padding:16px 22px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-                <span>共 <strong><?php echo $total_users_count_mj; ?></strong> 条记录</span>
+                <span>共 <strong><?php echo $total_users_count; ?></strong> 条记录</span>
                 <form method="get" action="./plugin.php" class="form-inline" style="display:flex;gap:8px;">
                     <input type="hidden" name="plugin" value="wx_mojang">
                     <input type="hidden" name="tab" value="score">
-                    <input type="text" name="search" class="form-control" placeholder="搜索用户ID或昵称" value="<?php echo htmlspecialchars($search_mj); ?>" style="width:200px;">
+                    <input type="text" name="search" class="form-control" placeholder="搜索用户ID或昵称" value="<?php echo htmlspecialchars($search); ?>" style="width:200px;">
                     <button type="submit" class="wx-btn wx-btn-sm">搜索</button>
                 </form>
             </div>
@@ -565,10 +790,10 @@ function switchMjTab(tab){
                             <th>操作</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <?php foreach ($users_mj as $index => $user): ?>
+                    <tbody id="userTableBody">
+                        <?php foreach ($users as $index => $user): ?>
                         <tr>
-                            <td><?php echo ($page_mj - 1) * 20 + $index + 1; ?></td>
+                            <td><?php echo ($page - 1) * $pageSize + $index + 1; ?></td>
                             <td><?php echo $user['uid']; ?></td>
                             <td>
                                 <?php if ($user['avatar']): ?>
@@ -585,107 +810,63 @@ function switchMjTab(tab){
                             </td>
                             <td><?php echo $user['best_score']; ?></td>
                             <td>
-                                <button type="button" class="wx-btn wx-btn-sm" onclick="$('#scoreModal<?php echo $user['uid']; ?>').modal('show')">修改积分</button>
+                                <button type="button" class="wx-btn wx-btn-sm btn-change-score" data-uid="<?php echo $user['uid']; ?>" data-score="<?php echo $user['score']; ?>" data-nick="<?php echo htmlspecialchars($user['nickname'], ENT_QUOTES); ?>">修改积分</button>
                                 <button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#4facfe,#00f2fe);margin-left:4px;" onclick="showUserLog(<?php echo $user['uid']; ?>, '<?php echo htmlspecialchars($user['nickname'], ENT_QUOTES); ?>')">流水</button>
                                 <button type="button" class="wx-btn wx-btn-sm wx-btn-danger" style="margin-left:4px;" onclick="deleteUser(<?php echo $user['uid']; ?>)">删除</button>
                                 <button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb);margin-left:4px;" onclick="openBackpack(<?php echo $user['uid']; ?>, '<?php echo htmlspecialchars($user['nickname'], ENT_QUOTES); ?>')">背包</button>
                             </td>
                         </tr>
                         <?php endforeach; ?>
-                        <?php if (empty($users_mj)): ?>
+                        <?php if (empty($users)): ?>
                         <tr><td colspan="8" class="wx-empty">暂无数据</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
             </div>
-            <?php if ($totalPages_mj > 1): ?>
-            <div class="pagination-admin">
-                <?php for ($i = 1; $i <= $totalPages_mj; $i++): ?>
-                <a href="./plugin.php?plugin=wx_games&game=mj&tab=score&page=<?php echo $i; ?>&search=<?php echo urlencode($search_mj); ?>" class="<?php echo $i == $page_mj ? 'active' : ''; ?>"><?php echo $i; ?></a>
+            <?php if ($totalPages > 1): ?>
+            <div class="pagination-admin" id="userPagination">
+                <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                <a href="javascript:void(0)" onclick="loadUsersPage(<?php echo $i; ?>)" class="<?php echo $i == $page ? 'active' : ''; ?>"><?php echo $i; ?></a>
                 <?php endfor; ?>
             </div>
             <?php endif; ?>
         </div>
     </div>
+</div>
 
-    <!-- 积分变动日志 -->
-    <div class="wx-card card-dark">
-        <div class="card-header">积分变动日志（最近50条）</div>
-        <div class="card-body" style="padding:0;">
-            <div style="overflow-x:auto;">
-                <table class="table-admin">
-                    <thead>
-                        <tr>
-                            <th>时间</th>
-                            <th>用户</th>
-                            <th>变动</th>
-                            <th>变动前</th>
-                            <th>变动后</th>
-                            <th>原因</th>
-                            <th>操作者</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($logs_mj as $log): ?>
-                        <tr>
-                            <td style="white-space:nowrap;"><?php echo $log['created']; ?></td>
-                            <td><?php echo htmlspecialchars($log['nickname']); ?></td>
-                            <td>
-                                <?php if ($log['score_change'] > 0): ?>
-                                <span class="win-text">+<?php echo $log['score_change']; ?></span>
-                                <?php else: ?>
-                                <span class="lose-text"><?php echo $log['score_change']; ?></span>
-                                <?php endif; ?>
-                            </td>
-                            <td><?php echo $log['score_before']; ?></td>
-                            <td><?php echo $log['score_after']; ?></td>
-                            <td><?php echo htmlspecialchars($log['reason']); ?></td>
-                            <td><?php echo htmlspecialchars($log['operator']); ?></td>
-                        </tr>
-                        <?php endforeach; ?>
-                        <?php if (empty($logs_mj)): ?>
-                        <tr><td colspan="7" class="wx-empty">暂无日志</td></tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+<!-- 修改积分弹窗（动态单例） -->
+<div class="modal fade" id="scoreModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content" style="border-radius:14px;border:none;box-shadow:0 10px 40px rgba(0,0,0,0.15);">
+            <div class="modal-header" style="background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border-radius:14px 14px 0 0;border:none;">
+                <h5 class="modal-title" style="font-size:16px;" id="scoreModalTitle">修改积分</h5>
+                <button type="button" class="close" data-dismiss="modal" style="color:#fff;opacity:0.8;">&times;</button>
             </div>
-        </div>
-    </div>
-
-    <?php foreach ($users_mj as $user): ?>
-    <div class="modal fade" id="scoreModal<?php echo $user['uid']; ?>" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-dialog" role="document">
-            <div class="modal-content" style="border-radius:14px;border:none;box-shadow:0 10px 40px rgba(0,0,0,0.15);">
-                <div class="modal-header" style="background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border-radius:14px 14px 0 0;border:none;">
-                    <h5 class="modal-title" style="font-size:16px;">修改积分 - <?php echo htmlspecialchars($user['nickname']); ?></h5>
-                    <button type="button" class="close" data-dismiss="modal" style="color:#fff;opacity:0.8;">&times;</button>
+            <form method="post" action="./plugin.php?plugin=wx_games&game=mj">
+                <input type="hidden" name="mj_action" value="change_score">
+                <input type="hidden" name="target_uid" id="scoreModalUid">
+                <div class="modal-body" style="padding:24px;">
+                    <div class="form-group">
+                        <label>当前积分</label>
+                        <input type="text" class="form-control" id="scoreModalCurrent" readonly style="background:#f8f9fe;">
+                    </div>
+                    <div class="form-group">
+                        <label>积分变化（正数增加，负数减少）</label>
+                        <input type="number" name="score_change" class="form-control" required placeholder="例如：100 或 -50">
+                    </div>
+                    <div class="form-group">
+                        <label>变动原因</label>
+                        <input type="text" name="reason" class="form-control" value="管理员手动调整">
+                    </div>
                 </div>
-                <form method="post" action="./plugin.php?plugin=wx_games&game=mj">
-                    <input type="hidden" name="do" value="change_score">
-                    <input type="hidden" name="target_uid" value="<?php echo $user['uid']; ?>">
-                    <div class="modal-body" style="padding:24px;">
-                        <div class="form-group">
-                            <label>当前积分</label>
-                            <input type="text" class="form-control" value="<?php echo $user['score']; ?>" readonly style="background:#f8f9fe;">
-                        </div>
-                        <div class="form-group">
-                            <label>积分变化（正数增加，负数减少）</label>
-                            <input type="number" name="score_change" class="form-control" required placeholder="例如：100 或 -50">
-                        </div>
-                        <div class="form-group">
-                            <label>变动原因</label>
-                            <input type="text" name="reason" class="form-control" value="管理员手动调整">
-                        </div>
-                    </div>
-                    <div class="modal-footer" style="border-top:1px solid #f0f0f5;padding:16px 24px;">
-                        <button type="button" class="wx-btn wx-btn-sm wx-btn-danger" data-dismiss="modal" style="opacity:0.7;">取消</button>
-                        <button type="submit" class="wx-btn wx-btn-sm">确认修改</button>
-                    </div>
-                </form>
-            </div>
+                <div class="modal-footer" style="border-top:1px solid #f0f0f5;padding:16px 24px;">
+                    <button type="button" class="wx-btn wx-btn-sm wx-btn-danger" data-dismiss="modal" style="opacity:0.7;">取消</button>
+                    <button type="submit" class="wx-btn wx-btn-sm">确认修改</button>
+                </div>
+            </form>
         </div>
     </div>
-    <?php endforeach; ?>
+</div>
 
     <!-- 用户流水弹窗 -->
     <div class="modal fade" id="userLogModal" tabindex="-1" role="dialog" aria-hidden="true">
@@ -734,7 +915,7 @@ function switchMjTab(tab){
                                     <select id="bp_add_item_id" class="form-control">
                                         <option value="">-- 请选择 --</option>
                                         <?php
-                                        $all_items_q = $db->query("SELECT `id`, `name`, `icon`, `item_type` FROM `" . DB_PREFIX . "wx_mojang_shop_items` ORDER BY id DESC");
+                                        $all_items_q = $db->query("SELECT `id`, `name`, `icon`, `item_type` FROM `" . DB_PREFIX . "wx_games_shop_items` WHERE `game` = 'mj' ORDER BY sort_order ASC, id ASC");
                                         while ($ait = $db->fetch_array($all_items_q)) {
                                             $type_label = $item_types[$ait['item_type']] ?? $ait['item_type'];
                                             echo '<option value="' . $ait['id'] . '">' . $ait['icon'] . ' ' . htmlspecialchars($ait['name']) . ' (' . $type_label . ')</option>';
@@ -763,111 +944,125 @@ function switchMjTab(tab){
             </div>
         </div>
     </div>
-</div>
 
-<div id="mj-tab-shop" class="mj-tab" style="display:none">
+<div class="tab-pane fade" id="mj-shop" role="tabpanel">
     <!-- ========== 商城管理 ========== -->
-    <div class="row">
-        <div class="col-md-6">
-            <div class="wx-card card-dark">
-                <div class="card-header">添加/编辑商品</div>
-                <div class="card-body">
-                    <input type="hidden" id="edit_item_id" value="0">
-                    <div class="form-group">
-                        <label>名称</label>
-                        <input type="text" id="shop_name" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>图标（Emoji）</label>
-                        <input type="text" id="shop_icon" class="form-control" placeholder="如 🎨">
-                    </div>
-                    <div class="form-group">
-                        <label>道具类型</label>
-                        <select id="shop_type" class="form-control" onchange="updateTypeHint()">
-                            <?php foreach ($item_types as $tk => $tl):
-                                $ti = $item_type_icons[$tk]['icon'] ?? '🎁';
-                            ?>
-                            <option value="<?= $tk ?>" data-icon="<?= $ti ?>"><?= $ti . ' ' . $tl ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <div id="typeHint" class="wx-info-block" style="margin-top:8px;font-size:12px;display:flex;align-items:center;gap:8px;">
-                            <span id="typeHintIcon">🎨</span>
-                            <span id="typeHintDesc">昵称显示为彩色，如：{"color":"#ff4500"}</span>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>描述</label>
-                        <textarea id="shop_desc" class="form-control" rows="2"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>效果数据（JSON）</label>
-                        <textarea id="shop_effect" class="form-control" rows="2" placeholder='{"color":"#ff0000"}'></textarea>
-                    </div>
-                    <button class="wx-btn" onclick="saveShopItem()">保存商品</button>
-                    <button class="wx-btn wx-btn-danger" onclick="resetShopForm()" style="display:none" id="btn_cancel_edit">取消编辑</button>
+    <!-- 商品列表 -->
+    <div class="wx-card card-dark">
+        <div class="card-header">商品列表</div>
+        <div class="card-body" style="padding:0;">
+            <div style="padding:16px 22px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <span>共 <strong><?php echo count($shop_items); ?></strong> 件商品</span>
+                    <select class="form-control" style="width:auto;display:inline-block;height:32px;font-size:13px;padding:2px 8px;" onchange="location.href='./plugin.php?plugin=wx_games&game=mj&tab=shop&filter_type='+this.value">
+                        <option value="">全部类型</option>
+                        <?php foreach ($item_types as $tk => $tv): ?>
+                        <option value="<?php echo $tk; ?>" <?php echo $filter_type === $tk ? 'selected' : ''; ?>><?php echo $tv; ?></option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
+                <button type="button" class="wx-btn wx-btn-sm" onclick="$('#addShopModal').modal('show')">+ 添加商品</button>
             </div>
-        </div>
-        <div class="col-md-6">
-            <div class="wx-card card-dark">
-                <div class="card-header">价格与库存</div>
-                <div class="card-body">
-                    <div class="form-group">
-                        <label>麻将积分价格</label>
-                        <input type="number" id="shop_price_mj" class="form-control" value="0" min="0">
-                    </div>
-                    <div class="form-group">
-                        <label>站点积分价格</label>
-                        <input type="number" id="shop_price_emlog" class="form-control" value="0" min="0">
-                    </div>
-                    <div class="form-group">
-                        <label>库存（-1不限）</label>
-                        <input type="number" id="shop_stock" class="form-control" value="-1">
-                    </div>
-                    <div class="form-group">
-                        <label>每人限购（0不限）</label>
-                        <input type="number" id="shop_max" class="form-control" value="0" min="0">
-                    </div>
-                    <div class="form-group">
-                        <label>排序</label>
-                        <input type="number" id="shop_sort" class="form-control" value="0">
-                    </div>
-                </div>
+            <div style="overflow-x:auto;">
+                    <table class="table-admin">
+                    <thead>
+                        <tr><th>ID</th><th>名称</th><th>类型</th><th>站点积分</th><th>麻将积分</th><th>库存</th><th>限购</th><th>排序</th><th>状态</th><th>操作</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($shop_items as $item):
+                        $type_name = $item_types[$item['item_type']] ?? $item['item_type'];
+                        $type_icon = $item_type_icons[$item['item_type']]['icon'] ?? '🎁';
+                        ?>
+                        <tr>
+                            <td><code><?php echo $item['id'] ?></code></td>
+                            <td><?php echo $type_icon . ' ' . htmlspecialchars($item['name']) ?></td>
+                            <td><span class="badge-score" style="font-size:11px;"><?php echo $type_name ?></span></td>
+                            <td><?php echo (int)$item['price_emlog'] > 0 ? (int)$item['price_emlog'] : '-'; ?></td>
+                            <td><?php echo (int)$item['price_game'] > 0 ? (int)$item['price_game'] : '-'; ?></td>
+                            <td><?php echo (int)$item['stock'] === -1 ? '不限' : (int)$item['stock']; ?></td>
+                            <td><?php echo (int)$item['max_per_user'] > 0 ? (int)$item['max_per_user'] : '不限'; ?></td>
+                            <td><?php echo (int)$item['sort_order']; ?></td>
+                            <td><?php echo (int)$item['status'] === 1 ? '<span style="color:#2ecc71;">上架</span>' : '<span style="color:#999;">下架</span>'; ?></td>
+                            <td>
+                                <button class="wx-btn wx-btn-sm" onclick="openEditModal(<?php echo $item['id'] ?>)">编辑</button>
+                                <a href="./plugin.php?plugin=wx_games&game=mj&mj_action=delete_shop_item&item_id=<?php echo $item['id'] ?>" class="wx-btn wx-btn-sm wx-btn-danger" onclick="return confirm('确定删除「<?php echo htmlspecialchars($item['name']); ?>」吗？')">删除</a>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                        <?php if (empty($shop_items)): ?>
+                        <tr><td colspan="9" class="wx-empty">暂无商品</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 
-    <div class="wx-card card-dark">
-        <div class="card-header">商品列表（按ID降序，最新在前）</div>
-        <div class="card-body" style="padding:0;">
-            <table class="table table-sm table-striped" style="margin-bottom:0;">
-                <thead>
-                    <tr><th>ID</th><th>名称</th><th>类型</th><th>排序值</th><th>麻将积分</th><th>站点积分</th><th>库存</th><th>状态</th><th>操作</th></tr>
-                </thead>
-                <tbody>
-                    <?php
-                    $items = $db->query("SELECT * FROM `" . DB_PREFIX . "wx_mojang_shop_items` ORDER BY id DESC");
-                    while ($item = $db->fetch_array($items)):
-                    $type_name = $item_types[$item['item_type']] ?? $item['item_type'];
-                    $type_icon = $item_type_icons[$item['item_type']]['icon'] ?? '🎁';
-                    ?>
-                    <tr>
-                        <td><code><?= $item['id'] ?></code></td>
-                        <td><?= $type_icon . ' ' . $item['name'] ?></td>
-                        <td><?= $type_name ?></td>
-                        <td><?= $item['sort_order'] ?></td>
-                        <td><?= $item['price_majiang'] ?></td>
-                        <td><?= $item['price_emlog'] ?></td>
-                        <td><?= $item['stock'] >= 0 ? $item['stock'] : '不限' ?></td>
-                        <td><?= $item['is_active'] ? '<span class="text-success">上架</span>' : '<span class="text-muted">下架</span>' ?></td>
-                        <td>
-                            <button class="wx-btn wx-btn-sm" onclick="editShopItem(<?= $item['id'] ?>)">编辑</button>
-                            <button class="wx-btn wx-btn-sm wx-btn-danger" onclick="deleteShopItem(<?= $item['id'] ?>)">删除</button>
-                        </td>
-                    </tr>
-                    <?php endwhile; ?>
-                </tbody>
-            </table>
+    <div class="row">
+        <div class="col-lg-6">
+        <div class="wx-card card-dark">
+            <div class="card-header">道具消耗统计</div>
+            <div class="card-body" style="padding:0;">
+                <div style="overflow-x:auto;">
+                    <table class="table-admin">
+                        <thead><tr><th>商品</th><th>购买人数</th><th>总数量</th><th>已使用</th></tr></thead>
+                        <tbody>
+                            <?php foreach ($inventory_stats as $st): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($st['name']); ?></td>
+                                <td><strong><?php echo intval($st['buyer_count']); ?></strong></td>
+                                <td><?php echo intval($st['total_bought']); ?></td>
+                                <td><?php echo intval($st['total_used']); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($inventory_stats)): ?>
+                            <tr><td colspan="4" class="wx-empty">暂无数据</td></tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php if ($stat_total_pages > 1): ?>
+                <div class="pagination-admin">
+                    <?php for ($i = 1; $i <= $stat_total_pages; $i++): ?>
+                    <a href="./plugin.php?plugin=wx_games&game=mj&tab=shop&stat_page=<?php echo $i; ?>" class="<?php echo $i == $stat_page ? 'active' : ''; ?>"><?php echo $i; ?></a>
+                    <?php endfor; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+        </div>
+        <div class="col-lg-6">
+        <div class="wx-card card-dark">
+            <div class="card-header">最近购买记录</div>
+            <div class="card-body" style="padding:0;">
+                <div style="overflow-x:auto;">
+                    <table class="table-admin">
+                        <thead><tr><th>时间</th><th>用户ID</th><th>商品</th><th>数量</th><th>已用</th></tr></thead>
+                        <tbody>
+                            <?php foreach ($purchase_history as $ph): ?>
+                            <tr>
+                                <td style="white-space:nowrap;"><?php echo htmlspecialchars($ph['created']); ?></td>
+                                <td><?php echo intval($ph['uid']); ?></td>
+                                <td><?php echo htmlspecialchars($ph['item_name'] ?? '未知'); ?></td>
+                                <td><?php echo intval($ph['quantity']); ?></td>
+                                <td><?php echo intval($ph['used']); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($purchase_history)): ?>
+                            <tr><td colspan="5" class="wx-empty">暂无记录</td></tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php if ($buy_total_pages > 1): ?>
+                <div class="pagination-admin">
+                    <?php for ($p = 1; $p <= $buy_total_pages; $p++): ?>
+                    <a href="./plugin.php?plugin=wx_games&game=mj&tab=shop&buy_page=<?php echo $p; ?>" class="<?php echo $p == $buy_page ? 'active' : ''; ?>"><?php echo $p; ?></a>
+                    <?php endfor; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
         </div>
     </div>
 
@@ -886,6 +1081,250 @@ function switchMjTab(tab){
 </script>
 </div>
 </div>
+
+<!-- 添加商品弹窗 -->
+<div class="modal fade" id="addShopModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content" style="border-radius:14px;border:none;box-shadow:0 10px 40px rgba(0,0,0,0.15);">
+            <div class="modal-header" style="background:linear-gradient(135deg,#2d3436,#636e72);color:#fff;border-radius:14px 14px 0 0;border:none;">
+                <h5 class="modal-title" style="font-size:16px;">添加商品</h5>
+                <button type="button" class="close" data-dismiss="modal" style="color:#fff;opacity:0.8;">&times;</button>
+            </div>
+            <form method="post" action="./plugin.php?plugin=wx_games&game=mj">
+                <input type="hidden" name="mj_action" value="add_shop_item">
+                <div class="modal-body" style="padding:24px;">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>商品名称 <span style="color:red;">*</span></label>
+                                <input type="text" name="name" class="form-control" required placeholder="例如：昵称变色">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>道具类型 <span style="font-size:11px;color:#999;font-weight:normal;">（选择后可参考下方说明）</span></label>
+                                <select name="item_type" id="add_item_type" class="form-control" onchange="updateTypeHint('add')">
+                                    <?php foreach ($item_types as $tk => $tl): 
+                                        $ti = $item_type_icons[$tk]['icon'] ?? '🎁';
+                                    ?>
+                                    <option value="<?php echo $tk; ?>"><?php echo $ti . ' ' . $tl; ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div id="addTypeHint" class="wx-info-block" style="margin-top:8px;font-size:12px;display:flex;align-items:center;gap:8px;">
+                                    <span id="addTypeIcon">🎨</span>
+                                    <span id="addTypeDesc"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>商品描述</label>
+                        <textarea name="description" class="form-control" rows="2" placeholder="简短描述商品效果"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>图标URL</label>
+                        <input type="text" name="icon" class="form-control" placeholder="可选，商品列表显示的图标URL">
+                    </div>
+                    <div class="form-group">
+                        <label>效果参数 (JSON)</label>
+                        <textarea name="effect_data" class="form-control" rows="2" style="font-family:monospace;font-size:12px;">{"color":"#ff4500"}</textarea>
+                        <small class="form-text text-muted">不同类型道具的配置参数，JSON格式。昵称变色：{"color":"#ff4500"}</small>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>站点积分价</label>
+                                <input type="number" name="price_emlog" class="form-control" value="0" min="0">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>麻将积分价</label>
+                                <input type="number" name="price_majiang" class="form-control" value="0" min="0">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>排序</label>
+                                <input type="number" name="sort_order" class="form-control" value="0" min="0">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>库存 (-1=不限量)</label>
+                                <input type="number" name="stock" class="form-control" value="-1" min="-1">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>每人限购 (0=不限)</label>
+                                <input type="number" name="max_per_user" class="form-control" value="0" min="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top:1px solid #f0f0f5;padding:16px 24px;">
+                    <button type="button" class="wx-btn wx-btn-sm wx-btn-danger" data-dismiss="modal" style="opacity:0.7;">取消</button>
+                    <button type="submit" class="wx-btn wx-btn-sm">添加商品</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑商品弹窗 -->
+<div class="modal fade" id="editShopModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content" style="border-radius:14px;border:none;box-shadow:0 10px 40px rgba(0,0,0,0.15);">
+            <div class="modal-header" style="background:linear-gradient(135deg,#2d3436,#636e72);color:#fff;border-radius:14px 14px 0 0;border:none;">
+                <h5 class="modal-title" style="font-size:16px;">编辑商品</h5>
+                <button type="button" class="close" data-dismiss="modal" style="color:#fff;opacity:0.8;">&times;</button>
+            </div>
+            <form method="post" action="./plugin.php?plugin=wx_games&game=mj">
+                <input type="hidden" name="mj_action" value="edit_shop_item">
+                <input type="hidden" name="item_id" id="edit_item_id" value="0">
+                <div class="modal-body" style="padding:24px;">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>商品名称 <span style="color:red;">*</span></label>
+                                <input type="text" name="name" id="edit_name" class="form-control" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>道具类型 <span style="font-size:11px;color:#999;font-weight:normal;">（选择后可参考下方说明）</span></label>
+                                <select name="item_type" id="edit_item_type" class="form-control" onchange="updateTypeHint('edit')">
+                                    <?php foreach ($item_types as $tk => $tl): 
+                                        $ti = $item_type_icons[$tk]['icon'] ?? '🎁';
+                                    ?>
+                                    <option value="<?php echo $tk; ?>"><?php echo $ti . ' ' . $tl; ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div id="editTypeHint" class="wx-info-block" style="margin-top:8px;font-size:12px;display:flex;align-items:center;gap:8px;">
+                                    <span id="editTypeIcon">🎨</span>
+                                    <span id="editTypeDesc"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>商品描述</label>
+                        <textarea name="description" id="edit_description" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>图标URL</label>
+                        <input type="text" name="icon" id="edit_icon" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>效果参数 (JSON)</label>
+                        <textarea name="effect_data" id="edit_effect_data" class="form-control" rows="2" style="font-family:monospace;font-size:12px;"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>站点积分价</label>
+                                <input type="number" name="price_emlog" id="edit_price_emlog" class="form-control" min="0">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>麻将积分价</label>
+                                <input type="number" name="price_majiang" id="edit_price_majiang" class="form-control" min="0">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>排序</label>
+                                <input type="number" name="sort_order" id="edit_sort_order" class="form-control" min="0">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>库存 (-1=不限量)</label>
+                                <input type="number" name="stock" id="edit_stock" class="form-control" min="-1">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>每人限购 (0=不限)</label>
+                                <input type="number" name="max_per_user" id="edit_max_per_user" class="form-control" min="0">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>状态</label>
+                                <select name="status" id="edit_status" class="form-control">
+                                    <option value="1">上架</option>
+                                    <option value="0">下架</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top:1px solid #f0f0f5;padding:16px 24px;">
+                    <button type="button" class="wx-btn wx-btn-sm wx-btn-danger" data-dismiss="modal" style="opacity:0.7;">取消</button>
+                    <button type="submit" class="wx-btn wx-btn-sm">保存修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// ====== 商城管理：模态框JS ======
+var TYPE_ICONS = <?php echo json_encode($item_type_icons, JSON_UNESCAPED_UNICODE); ?>;
+function updateTypeHint(prefix) {
+    var sel = document.getElementById(prefix + '_item_type');
+    if (!sel) return;
+    var val = sel.value;
+    var hint = TYPE_ICONS[val] || { icon: '🎁', hint: '自定义道具' };
+    var iconEl = document.getElementById(prefix + 'TypeIcon');
+    var descEl = document.getElementById(prefix + 'TypeDesc');
+    if (iconEl) iconEl.textContent = hint.icon;
+    if (descEl) descEl.textContent = hint.hint;
+}
+setTimeout(function() { updateTypeHint('add'); updateTypeHint('edit'); }, 100);
+
+function saveShopItemModal(form) {
+    var formData = new FormData(form);
+    var id = formData.get('item_id');
+    formData.append('mj_action', id > 0 ? 'edit_shop_item' : 'add_shop_item');
+    fetch('?plugin=wx_games&game=mj', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(d => {
+        if (d.code === 0) { alert('保存成功'); location.reload(); }
+        else { alert('保存失败: ' + (d.message || '')); }
+    });
+    return false;
+}
+
+function openAddModal() { $('#addShopModal').modal('show'); }
+
+function openEditModal(id) {
+    // 从PHP注入的数据中查找商品
+    var items = <?php echo json_encode($shop_items, JSON_UNESCAPED_UNICODE); ?>;
+    var item = items.find(function(i) { return parseInt(i.id) === parseInt(id); });
+    if (!item) { alert('商品数据未找到'); return; }
+    document.getElementById('edit_item_id').value = item.id;
+    document.getElementById('edit_name').value = item.name || '';
+    document.getElementById('edit_description').value = item.description || '';
+    document.getElementById('edit_icon').value = item.icon || '';
+    document.getElementById('edit_effect_data').value = item.effect_data || '{}';
+    document.getElementById('edit_price_emlog').value = item.price_emlog || 0;
+    document.getElementById('edit_price_majiang').value = item.price_game || 0;
+    document.getElementById('edit_sort_order').value = item.sort_order || 0;
+    document.getElementById('edit_stock').value = item.stock || -1;
+    document.getElementById('edit_max_per_user').value = item.max_per_user || 0;
+    document.getElementById('edit_status').value = item.status || 1;
+    document.getElementById('edit_item_type').value = item.item_type || 'title_colored';
+    $('#editShopModal').modal('show');
+}
+</script>
 
 <script>
 // AI 台词标签点击切换编辑面板
@@ -930,6 +1369,111 @@ document.querySelectorAll('.quote-close-all').forEach(function(link) {
         }
     });
 });
+
+// ====== 修改积分弹窗（事件委托） ======
+$(document).on('click', '.btn-change-score', function(e) {
+    var btn = this;
+    var uid = $(btn).attr('data-uid');
+    var score = $(btn).attr('data-score');
+    var nickname = $(btn).attr('data-nick');
+    document.getElementById('scoreModalUid').value = uid;
+    document.getElementById('scoreModalCurrent').value = score;
+    var title = '修改积分';
+    if (nickname) title += ' - ' + nickname;
+    document.getElementById('scoreModalTitle').textContent = title;
+    $('#scoreModal').modal('show');
+});
+
+// ====== 用户列表分页 AJAX ======
+function loadUsersPage(page) {
+    var search = document.getElementById('logSearchInput') ? document.getElementById('logSearchInput').value : '';
+    var tbody = document.getElementById('userTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="8" class="wx-empty">加载中...</td></tr>';
+    fetch('?plugin=wx_games&game=mj&mj_action=get_users_page&page=' + page + '&search=' + encodeURIComponent(search))
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.code !== 0) { tbody.innerHTML = '<tr><td colspan="8" class="wx-empty">加载失败</td></tr>'; return; }
+        if (!d.data || d.data.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="wx-empty">暂无数据</td></tr>'; return; }
+        var html = '';
+        d.data.forEach(function(u, idx) {
+            var safeName = u.nickname ? u.nickname.replace(/'/g,"\\'") : '';
+            html += '<tr>'
+                + '<td>' + ((d.currentPage - 1) * 10 + idx + 1) + '</td>'
+                + '<td>' + u.uid + '</td>'
+                + '<td>' + (u.avatar ? '<img src="' + u.avatar + '" style="width:24px;height:24px;border-radius:50%;vertical-align:middle;margin-right:4px;">' : '') + u.nickname + '</td>'
+                + '<td><span class="badge-score">' + u.score + '</span></td>'
+                + '<td>' + u.total_games + '</td>'
+                + '<td><span class="win-text">' + u.wins + '胜</span> / <span class="lose-text">' + u.losses + '负</span> / <span style="color:#999;">' + u.draws + '平</span></td>'
+                + '<td>' + u.best_score + '</td>'
+                + '<td>'
+                + '<button type="button" class="wx-btn wx-btn-sm btn-change-score" data-uid="' + u.uid + '" data-score="' + u.score + '">修改积分</button>'
+                + '<button type="button" class="wx-btn wx-btn-sm wx-btn-danger" style="margin-left:4px;" onclick="deleteUser(' + u.uid + ')">删除</button>'
+                + '<button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#4facfe,#00f2fe);margin-left:4px;" onclick="showUserLog(' + u.uid + ')">流水</button>'
+                + '<button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb);margin-left:4px;" onclick="openBackpack(' + u.uid + ')">背包</button>'
+                + '</td></tr>';
+        });
+        tbody.innerHTML = html;
+        updateUserPagination(d.currentPage, d.totalPages);
+    })
+    .catch(function() {
+        tbody.innerHTML = '<tr><td colspan="8" class="wx-empty">网络错误</td></tr>';
+    });
+}
+function updateUserPagination(currentPage, totalPages) {
+    var container = document.getElementById('userPagination');
+    if (!container) return;
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+    var html = '';
+    for (var i = 1; i <= totalPages; i++) {
+        html += '<a href="javascript:void(0)" onclick="loadUsersPage(' + i + ')" class="' + (i == currentPage ? 'active' : '') + '">' + i + '</a>';
+    }
+    container.innerHTML = html;
+}
+
+// ====== 日志分页 AJAX ======
+function loadLogsPage(page) {
+    var search = document.getElementById('logSearchInput') ? document.getElementById('logSearchInput').value : '';
+    var tbody = document.getElementById('logTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载中...</td></tr>';
+    fetch('?plugin=wx_games&game=mj&mj_action=get_logs_page&log_page=' + page + '&search=' + encodeURIComponent(search), { credentials: 'include' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.code !== 0) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载失败</td></tr>'; return; }
+        if (!d.data || d.data.length === 0) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">暂无日志记录</td></tr>'; return; }
+        var html = '';
+        d.data.forEach(function(log) {
+            var time = log.created || '';
+            var change = parseInt(log.score_change);
+            var changeHtml = change > 0 ? '<span class="win-text">+' + change + '</span>' : '<span class="lose-text">' + change + '</span>';
+            html += '<tr><td style="white-space:nowrap;">' + time + '</td><td>' + (log.nickname || '') + '</td><td>' + changeHtml + '</td><td>' + (log.score_before || 0) + '</td><td>' + (log.score_after || 0) + '</td><td>' + (log.reason || '') + '</td><td>' + (log.operator || '') + '</td></tr>';
+        });
+        tbody.innerHTML = html;
+        updateLogPagination(d.currentPage || page, d.totalPages || 1);
+    })
+    .catch(function() { if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">网络错误</td></tr>'; });
+}
+function updateLogPagination(currentPage, totalPages) {
+    var container = document.getElementById('logPagination');
+    if (!container) return;
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+    var html = '';
+    var start = Math.max(1, currentPage - 2);
+    var end = Math.min(totalPages, currentPage + 2);
+    if (start > 1) {
+        html += '<a href="javascript:void(0)" onclick="loadLogsPage(1)" class="pagi-link">1</a>';
+        if (start > 2) html += '<span style="padding:6px 8px;color:#999;">...</span>';
+    }
+    for (var i = start; i <= end; i++) {
+        html += '<a href="javascript:void(0)" onclick="loadLogsPage(' + i + ')" class="pagi-link' + (i == currentPage ? ' active' : '') + '">' + i + '</a>';
+    }
+    if (end < totalPages) {
+        if (end < totalPages - 1) html += '<span style="padding:6px 8px;color:#999;">...</span>';
+        html += '<a href="javascript:void(0)" onclick="loadLogsPage(' + totalPages + ')" class="pagi-link">' + totalPages + '</a>';
+    }
+    container.innerHTML = html;
+}
 
 // 用户积分流水弹窗
 function showUserLog(uid, nickname) {
@@ -1045,7 +1589,7 @@ function showUserLog(uid, nickname) {
         if (!confirm('确认对用户 ' + uid + ' 执行积分变动: ' + change + ' ?')) return;
 
         const formData = new FormData();
-        formData.append('do', 'change_score');
+        formData.append('mj_action', 'change_score');
         formData.append('target_uid', uid);
         formData.append('score_change', change);
         formData.append('reason', reason);
@@ -1071,7 +1615,7 @@ function showUserLog(uid, nickname) {
         if (!confirm('再次确认：所有玩家积分、游戏记录和流水都将被删除！')) return;
 
         const formData = new FormData();
-        formData.append('do', 'reset');
+        formData.append('mj_action', 'reset');
 
         fetch('?plugin=wx_games&game=mj', {
             method: 'POST',
@@ -1094,7 +1638,7 @@ function showUserLog(uid, nickname) {
         const action = id > 0 ? 'edit_shop_item' : 'add_shop_item';
 
         const formData = new FormData();
-        formData.append('do', action);
+        formData.append('mj_action', action);
         if (id > 0) formData.append('item_id', id);
         formData.append('name', document.getElementById('shop_name').value);
         formData.append('description', document.getElementById('shop_desc').value);
@@ -1126,7 +1670,7 @@ function showUserLog(uid, nickname) {
     function editShopItem(id) {
         <?php
         $items_data = [];
-        $items_q = $db->query("SELECT * FROM `" . DB_PREFIX . "wx_mojang_shop_items` ORDER BY id DESC");
+        $items_q = $db->query("SELECT * FROM `" . DB_PREFIX . "wx_games_shop_items` WHERE `game` = 'mj' ORDER BY sort_order ASC, id ASC");
         while ($it = $db->fetch_array($items_q)) {
             // stripslashes 修复存量被 addslashes 污染的 effect_data
             if (isset($it['effect_data'])) {
@@ -1147,7 +1691,7 @@ function showUserLog(uid, nickname) {
         document.getElementById('shop_icon').value = item.icon;
         document.getElementById('shop_type').value = item.item_type;
         document.getElementById('shop_effect').value = item.effect_data;
-        document.getElementById('shop_price_mj').value = item.price_majiang;
+        document.getElementById('shop_price_mj').value = item.price_game;
         document.getElementById('shop_price_emlog').value = item.price_emlog;
         document.getElementById('shop_stock').value = item.stock;
         document.getElementById('shop_max').value = item.max_per_user;
@@ -1172,7 +1716,7 @@ function showUserLog(uid, nickname) {
     function deleteShopItem(id) {
         if (!confirm('确定要删除这个商品吗？')) return;
         const formData = new FormData();
-        formData.append('do', 'delete_shop_item');
+        formData.append('mj_action', 'delete_shop_item');
         formData.append('item_id', id);
 
         fetch('?plugin=wx_games&game=mj&tab=shop', {
@@ -1193,7 +1737,7 @@ function showUserLog(uid, nickname) {
         if (!confirm('⚠️ 确定要删除该玩家的积分、游戏记录和流水吗？此操作不可撤销！')) return;
         if (!confirm('再次确认：所有数据将被永久删除！')) return;
         const formData = new FormData();
-        formData.append('do', 'delete_user');
+        formData.append('mj_action', 'delete_user');
         formData.append('uid', uid);
 
         fetch('?plugin=wx_games&game=mj', {
@@ -1374,5 +1918,6 @@ function showUserLog(uid, nickname) {
         document.getElementById('bp_add_btn').disabled = !this.value;
     });
     </script>
-    <?php
-}
+<!-- 关闭：container-fluid / function -->
+</div>
+<?php }

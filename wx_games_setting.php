@@ -20,6 +20,9 @@ if ($wxg_game === 'ddz') {
 } elseif ($wxg_game === 'mj') {
     require_once __DIR__ . '/wx_games_mojang_fn.php';
     require_once __DIR__ . '/wx_games_mojang_admin.php';
+} elseif ($wxg_game === 'niuniu') {
+    require_once __DIR__ . '/wx_games_niuniu_fn.php';
+    require_once __DIR__ . '/wx_games_niuniu_admin.php';
 }
 
 // ============================================================
@@ -60,6 +63,12 @@ function plugin_setting_view() {
         } else {
             echo '<div class="alert alert-danger">mojang admin 加载失败</div>';
         }
+    } elseif ($game === 'niuniu') {
+        if (function_exists('wx_niuniu_admin_render')) {
+            wx_niuniu_admin_render();
+        } else {
+            echo '<div class="alert alert-danger">niuniu admin 加载失败</div>';
+        }
     } else {
         wxg_hub_view();
     }
@@ -74,7 +83,7 @@ function wxg_hub_view() {
     $storage = Storage::getInstance('wx_games');
     $game_status = $storage->getValue('game_status');
     if (!is_array($game_status)) {
-        $game_status = ['ddz' => '1', 'mj' => '1'];
+        $game_status = ['ddz' => '1', 'mj' => '1', 'niuniu' => '1'];
     }
 
     // 处理开关 POST
@@ -140,8 +149,8 @@ function wxg_hub_view() {
         <?php
         $total_players = 0; $total_games_all = 0;
         foreach ($list as $key => $g):
-            $scores_table = ($key === 'ddz') ? DB_PREFIX . 'wx_ddz_scores' : DB_PREFIX . 'wx_mojang_scores';
-            $games_table = ($key === 'ddz') ? DB_PREFIX . 'wx_ddz_games' : DB_PREFIX . 'wx_mojang_games';
+            $scores_table = DB_PREFIX . 'wx_games_scores';
+            $games_table = ($key === 'ddz') ? DB_PREFIX . 'wx_ddz_games' : (($key === 'mj') ? DB_PREFIX . 'wx_mojang_games' : DB_PREFIX . 'wx_niuniu_games');
             try {
                 $r = $db->once_fetch_array("SELECT COUNT(*) AS c, COALESCE(SUM(total_games),0) AS tg FROM `$scores_table` WHERE `is_ai` = 0");
                 $total_players += (int)($r['c'] ?? 0);
@@ -161,19 +170,19 @@ function wxg_hub_view() {
             <p style="color:#999;font-size:0.82rem;margin-bottom:12px">关闭的游戏将不在前台大厅显示，已有数据不受影响</p>
             <?php foreach ($list as $key => $g):
                 $enabled = isset($game_status[$key]) ? $game_status[$key] : '1';
-                $scores_table = ($key === 'ddz') ? DB_PREFIX . 'wx_ddz_scores' : DB_PREFIX . 'wx_mojang_scores';
-                $games_table = ($key === 'ddz') ? DB_PREFIX . 'wx_ddz_games' : DB_PREFIX . 'wx_mojang_games';
+            $scores_table = DB_PREFIX . 'wx_games_scores';
+            $games_table = ($key === 'ddz') ? DB_PREFIX . 'wx_ddz_games' : (($key === 'mj') ? DB_PREFIX . 'wx_mojang_games' : DB_PREFIX . 'wx_niuniu_games');
 
                 // 查基础数据
                 $players = 0; $total_games = 0; $max_score = 0; $today_active = 0; $week_active = 0;
                 try {
-                    $r = $db->once_fetch_array("SELECT COUNT(*) AS c, COALESCE(SUM(total_games),0) AS tg, COALESCE(MAX(score),0) AS ms FROM `$scores_table` WHERE `is_ai` = 0");
+                    $r = $db->once_fetch_array("SELECT COUNT(*) AS c, COALESCE(SUM(total_games),0) AS tg, COALESCE(MAX(score),0) AS ms FROM `$scores_table` WHERE `game` = '$key' AND `is_ai` = 0");
                     $players = (int)($r['c'] ?? 0);
                     $total_games = (int)($r['tg'] ?? 0);
                     $max_score = (int)($r['ms'] ?? 0);
                 } catch (\Throwable $e) {}
                 try {
-                    if ($key === 'ddz') {
+                    if ($key === 'ddz' || $key === 'niuniu') {
                         $r = $db->once_fetch_array("SELECT COUNT(*) AS c FROM `$games_table` WHERE `created_at` > $yesterday");
                         $today_active = (int)($r['c'] ?? 0);
                         $r = $db->once_fetch_array("SELECT COUNT(*) AS c FROM `$games_table` WHERE `created_at` > $week_ago");

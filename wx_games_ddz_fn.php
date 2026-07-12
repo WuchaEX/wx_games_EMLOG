@@ -68,6 +68,10 @@ function wx_ddz_handle_signal($signal) {
     $now = time();
 
     if ($signal === 'start') {
+        // 先关闭所有历史未完成记录
+        $db->query("UPDATE `" . $table_games . "` SET
+            `status` = 0, `finished_at` = $now
+            WHERE `uid` = $suid AND `status` = 1");
         $nickname = $db->escape_string($user['nickname']);
         $db->query("INSERT INTO `" . $table_games . "`
             (`uid`, `nickname`, `score_change`, `result`, `status`, `created_at`)
@@ -75,16 +79,14 @@ function wx_ddz_handle_signal($signal) {
     } elseif ($signal === 'end') {
         $db->query("UPDATE `" . $table_games . "` SET
             `status` = 0, `finished_at` = $now
-            WHERE `uid` = $suid AND `status` = 1
-            ORDER BY `id` DESC LIMIT 1");
+            WHERE `uid` = $suid AND `status` = 1");
     } elseif ($signal === 'penalty') {
         $penalty_points = isset($_GET['points']) ? intval($_GET['points']) : 100;
         $penalty_points = -abs($penalty_points);
         wx_ddz_apply_penalty($user['uid'], $penalty_points);
         $db->query("UPDATE `" . $table_games . "` SET
             `result` = 'lose', `score_change` = $penalty_points, `status` = 0, `finished_at` = $now
-            WHERE `uid` = $suid AND `status` = 1
-            ORDER BY `id` DESC LIMIT 1");
+            WHERE `uid` = $suid AND `status` = 1");
     }
 }
 
@@ -98,7 +100,7 @@ function wx_ddz_get_config() {
         $defaults = [
             'title'              => 'H5 斗地主',
             'guest_play'         => '1',
-            'ai_names'           => 'AI玩家1,AI玩家2',
+            'ai_names'           => '全宝蓝,李居丽,朴素妍,咸恩静,朴孝敏,朴智妍',
             'max_entries'        => 100,
             'penalty_multiplier' => 1.0,
             'notice'             => '欢迎来到H5斗地主！游戏过程中请遵守规则，公平竞技。',
@@ -139,12 +141,9 @@ function wx_ddz_get_ai_players() {
             }
         } catch (Throwable $e) {}
         if ($ai_players === null) {
-            $config = wx_ddz_get_config();
-            $names = isset($config['ai_names']) ? explode(',', $config['ai_names']) : ['AI玩家1', 'AI玩家2'];
+            $names = ['全宝蓝', '李居丽', '朴素妍', '咸恩静', '朴孝敏', '朴智妍'];
             $ai_players = [];
             foreach ($names as $i => $name) {
-                $name = trim($name);
-                if (empty($name)) $name = 'AI玩家' . ($i + 1);
                 $ai_players[] = [
                     'name'   => $name,
                     'avatar' => $avatar_files[$i % count($avatar_files)],
@@ -174,8 +173,8 @@ function wx_ddz_get_user_score($uid, $is_ai = 0) {
         $db = Database::getInstance();
         $uid = intval($uid);
         $is_ai = intval($is_ai);
-        $table = DB_PREFIX . 'wx_ddz_scores';
-        $row = $db->once_fetch_array("SELECT * FROM `" . $table . "` WHERE `uid` = $uid AND `is_ai` = $is_ai LIMIT 1");
+        $table = DB_PREFIX . 'wx_games_scores';
+        $row = $db->once_fetch_array("SELECT * FROM `" . $table . "` WHERE `game` = 'ddz' AND `uid` = $uid AND `is_ai` = $is_ai LIMIT 1");
         if ($row) {
             if ($is_ai === 0) {
                 $user = $db->once_fetch_array("SELECT `nickname`, `photo` FROM `" . DB_PREFIX . "user` WHERE `uid` = $uid LIMIT 1");
@@ -206,10 +205,10 @@ function wx_ddz_get_user_score($uid, $is_ai = 0) {
 function wx_ddz_get_leaderboard($limit = 20, $include_ai = true) {
     try {
         $db = Database::getInstance();
-        $table = DB_PREFIX . 'wx_ddz_scores';
-        $table_inv = DB_PREFIX . 'wx_ddz_user_items';
-        $table_items = DB_PREFIX . 'wx_ddz_shop_items';
-        $where_sub = $include_ai ? '' : 'WHERE `is_ai` = 0';
+        $table = DB_PREFIX . 'wx_games_scores';
+        $table_inv = DB_PREFIX . 'wx_games_user_items';
+        $table_items = DB_PREFIX . 'wx_games_shop_items';
+        $where_sub = $include_ai ? "WHERE `game` = 'ddz'" : "WHERE `game` = 'ddz' AND `is_ai` = 0";
         $where_ai_check = $include_ai ? '' : ' AND sc.`is_ai` = 0';
         $result = $db->query("
             SELECT sc.*, si.`item_type`, si.`effect_data`
@@ -284,7 +283,7 @@ function wx_ddz_resolve_avatar($uid, $photo = null) {
 function wx_ddz_save_score($uid, $nickname, $avatar, $score_change, $result, $is_ai = 0) {
     try {
         $db = Database::getInstance();
-        $table = DB_PREFIX . 'wx_ddz_scores';
+        $table = DB_PREFIX . 'wx_games_scores';
         $now = time();
         $uid = intval($uid);
         $score_change = intval($score_change);
@@ -292,17 +291,16 @@ function wx_ddz_save_score($uid, $nickname, $avatar, $score_change, $result, $is
         $nickname = $db->escape_string(addslashes(trim($nickname)));
         $avatar = $db->escape_string(addslashes(trim($avatar)));
         $result = ($result === 'win' || $result === 'lose') ? $result : 'draw';
-        $existing = $db->once_fetch_array("SELECT * FROM `" . $table . "` WHERE `uid` = $uid AND `is_ai` = $is_ai LIMIT 1");
+        $existing = $db->once_fetch_array("SELECT * FROM `" . $table . "` WHERE `game` = 'ddz' AND `uid` = $uid AND `is_ai` = $is_ai LIMIT 1");
         $table_games = DB_PREFIX . 'wx_ddz_games';
         $now = time();
         if ($is_ai == 0) {
             $db->query("UPDATE `" . $table_games . "` SET
                 `status` = 0, `finished_at` = $now,
                 `result` = '" . $result . "', `score_change` = $score_change
-                WHERE `uid` = $uid AND `status` = 1
-                ORDER BY `id` DESC LIMIT 1");
+                WHERE `uid` = $uid AND `status` = 1");
         }
-        $table_logs = DB_PREFIX . 'wx_ddz_logs';
+        $table_logs = DB_PREFIX . 'wx_games_logs';
         $result_label = $result === 'win' ? '胜' : ($result === 'lose' ? '负' : '平');
         $reason = '游戏结算（' . $result_label . '）';
         if ($existing) {
@@ -317,10 +315,10 @@ function wx_ddz_save_score($uid, $nickname, $avatar, $score_change, $result, $is
                 `score` = $new_score, `total_games` = $total_games,
                 `wins` = $wins, `losses` = $losses, `draws` = $draws,
                 `best_score` = $best_score, `updated_at` = $now
-                WHERE `id` = " . intval($existing['id']));
+                WHERE `game` = 'ddz' AND `id` = " . intval($existing['id']));
             $db->query("INSERT INTO `" . $table_logs . "`
-                (`uid`, `nickname`, `score_change`, `score_before`, `score_after`, `reason`, `operator`, `created_at`)
-                VALUES ($uid, '$nickname', $score_change, $score_before, $new_score, '$reason', 'system', $now)");
+                (`game`, `uid`, `nickname`, `score_change`, `score_before`, `score_after`, `reason`, `operator`, `created_at`)
+                VALUES ('ddz', $uid, '$nickname', $score_change, $score_before, $new_score, '$reason', 'system', $now)");
             return ['success' => true, 'msg' => '保存成功', 'score' => $new_score];
         } else {
             $score_before = 0;
@@ -329,11 +327,11 @@ function wx_ddz_save_score($uid, $nickname, $avatar, $score_change, $result, $is
             $draws  = $result === 'draw' ? 1 : 0;
             $best_score = $score_change;
             $db->query("INSERT INTO `" . $table . "`
-                (`uid`, `nickname`, `avatar`, `score`, `total_games`, `wins`, `losses`, `draws`, `best_score`, `is_ai`, `updated_at`, `created_at`)
-                VALUES ($uid, '" . $nickname . "', '" . $avatar . "', $score_change, 1, $wins, $losses, $draws, $best_score, $is_ai, $now, $now)");
+                (`game`, `uid`, `nickname`, `avatar`, `score`, `total_games`, `wins`, `losses`, `draws`, `best_score`, `is_ai`, `updated_at`, `created_at`)
+                VALUES ('ddz', $uid, '" . $nickname . "', '" . $avatar . "', $score_change, 1, $wins, $losses, $draws, $best_score, $is_ai, $now, $now)");
             $db->query("INSERT INTO `" . $table_logs . "`
-                (`uid`, `nickname`, `score_change`, `score_before`, `score_after`, `reason`, `operator`, `created_at`)
-                VALUES ($uid, '$nickname', $score_change, $score_before, $score_change, '$reason', 'system', $now)");
+                (`game`, `uid`, `nickname`, `score_change`, `score_before`, `score_after`, `reason`, `operator`, `created_at`)
+                VALUES ('ddz', $uid, '$nickname', $score_change, $score_before, $score_change, '$reason', 'system', $now)");
             return ['success' => true, 'msg' => '保存成功', 'score' => $score_change];
         }
     } catch (Throwable $e) {
@@ -344,30 +342,30 @@ function wx_ddz_save_score($uid, $nickname, $avatar, $score_change, $result, $is
 function wx_ddz_apply_penalty($uid, $penalty_score) {
     try {
         $db = Database::getInstance();
-        $table = DB_PREFIX . 'wx_ddz_scores';
-        $table_logs = DB_PREFIX . 'wx_ddz_logs';
+        $table = DB_PREFIX . 'wx_games_scores';
+        $table_logs = DB_PREFIX . 'wx_games_logs';
         $uid = intval($uid);
         $penalty_score = intval($penalty_score);
         $now = time();
-        $existing = $db->once_fetch_array("SELECT * FROM `" . $table . "` WHERE `uid` = $uid AND `is_ai` = 0 LIMIT 1");
+        $existing = $db->once_fetch_array("SELECT * FROM `" . $table . "` WHERE `game` = 'ddz' AND `uid` = $uid AND `is_ai` = 0 LIMIT 1");
         if ($existing) {
             $score_before = (int)$existing['score'];
             $new_score = $score_before + $penalty_score;
             $nickname = $existing['nickname'];
-            $db->query("UPDATE `" . $table . "` SET `score` = $new_score, `updated_at` = $now WHERE `id` = " . intval($existing['id']));
+            $db->query("UPDATE `" . $table . "` SET `score` = $new_score, `updated_at` = $now WHERE `game` = 'ddz' AND `id` = " . intval($existing['id']));
         } else {
             $score_before = 0;
             $new_score = $penalty_score;
             $nickname = '';
             $db->query("INSERT INTO `" . $table . "`
-                (`uid`, `nickname`, `avatar`, `score`, `total_games`, `wins`, `losses`, `draws`, `best_score`, `is_ai`, `updated_at`, `created_at`)
-                VALUES ($uid, '', '', $penalty_score, 1, 0, 1, 0, $penalty_score, 0, $now, $now)");
+                (`game`, `uid`, `nickname`, `avatar`, `score`, `total_games`, `wins`, `losses`, `draws`, `best_score`, `is_ai`, `updated_at`, `created_at`)
+                VALUES ('ddz', $uid, '', '', $penalty_score, 1, 0, 1, 0, $penalty_score, 0, $now, $now)");
         }
         $nickname_esc = $db->escape_string($nickname);
         $db->query("INSERT INTO `" . $table_logs . "`
-            (`uid`, `nickname`, `score_change`, `score_before`, `score_after`, `reason`, `operator`, `created_at`)
-            VALUES ($uid, '$nickname_esc', $penalty_score, $score_before, $new_score, '逃跑惩罚（超时未完成）', 'system', $now)");
-        $row = $db->once_fetch_array("SELECT `score` FROM `" . $table . "` WHERE `uid` = $uid AND `is_ai` = 0 LIMIT 1");
+            (`game`, `uid`, `nickname`, `score_change`, `score_before`, `score_after`, `reason`, `operator`, `created_at`)
+            VALUES ('ddz', $uid, '$nickname_esc', $penalty_score, $score_before, $new_score, '逃跑惩罚（超时未完成）', 'system', $now)");
+        $row = $db->once_fetch_array("SELECT `score` FROM `" . $table . "` WHERE `game` = 'ddz' AND `uid` = $uid AND `is_ai` = 0 LIMIT 1");
         return intval($row['score'] ?? 0);
     } catch (Throwable $e) { return 0; }
 }
@@ -375,22 +373,22 @@ function wx_ddz_apply_penalty($uid, $penalty_score) {
 function wx_ddz_admin_change_score($uid, $score_change, $reason = '', $operator = '') {
     try {
         $db = Database::getInstance();
-        $table_scores = DB_PREFIX . 'wx_ddz_scores';
-        $table_logs  = DB_PREFIX . 'wx_ddz_logs';
+        $table_scores = DB_PREFIX . 'wx_games_scores';
+        $table_logs  = DB_PREFIX . 'wx_games_logs';
         $now = time();
         $uid = intval($uid);
         $score_change = intval($score_change);
-        $row = $db->once_fetch_array("SELECT * FROM `" . $table_scores . "` WHERE `uid` = $uid AND `is_ai` = 0 LIMIT 1");
+        $row = $db->once_fetch_array("SELECT * FROM `" . $table_scores . "` WHERE `game` = 'ddz' AND `uid` = $uid AND `is_ai` = 0 LIMIT 1");
         if (!$row) return false;
         $score_before = (int)$row['score'];
         $score_after  = $score_before + $score_change;
         $nickname_esc = $db->escape_string($row['nickname']);
         $reason_esc   = $db->escape_string(addslashes(trim($reason)));
         $operator_esc = $db->escape_string(addslashes(trim($operator)));
-        $db->query("UPDATE `" . $table_scores . "` SET `score` = $score_after, `updated_at` = $now WHERE `id` = " . intval($row['id']));
+        $db->query("UPDATE `" . $table_scores . "` SET `score` = $score_after, `updated_at` = $now WHERE `game` = 'ddz' AND `id` = " . intval($row['id']));
         $db->query("INSERT INTO `" . $table_logs . "`
-            (`uid`, `nickname`, `score_change`, `score_before`, `score_after`, `reason`, `operator`, `created_at`)
-            VALUES ($uid, '" . $nickname_esc . "', $score_change, $score_before, $score_after, '" . $reason_esc . "', '" . $operator_esc . "', $now)");
+            (`game`, `uid`, `nickname`, `score_change`, `score_before`, `score_after`, `reason`, `operator`, `created_at`)
+            VALUES ('ddz', $uid, '" . $nickname_esc . "', $score_change, $score_before, $score_after, '" . $reason_esc . "', '" . $operator_esc . "', $now)");
         return true;
     } catch (Throwable $e) { return false; }
 }
@@ -425,7 +423,7 @@ function wx_ddz_api_save_ai_score() {
     $avatar       = isset($_POST['avatar'])   ? addslashes(trim($_POST['avatar']))    : '';
     $score_change = isset($_POST['score'])    ? intval($_POST['score'])             : 0;
     $result       = isset($_POST['result'])   ? addslashes(trim($_POST['result']))   : 'draw';
-    $ai_uid       = abs(crc32($nickname)) % 1000000 + 1000000;
+    $ai_uid       = wx_games_get_ai_uid($nickname);
     $save_result  = wx_ddz_save_score($ai_uid, $nickname, $avatar, $score_change, $result, 1);
     if ($save_result['success']) {
         echo json_encode(['code' => 0, 'msg' => 'AI分数已保存'], JSON_UNESCAPED_UNICODE);
@@ -447,8 +445,8 @@ function wx_ddz_api_get_user_logs() {
     $target_uid = isset($_GET['uid']) ? intval($_GET['uid']) : 0;
     if ($target_uid <= 0) { echo json_encode(['code' => -1, 'msg' => '无效的用户ID'], JSON_UNESCAPED_UNICODE); exit; }
     $db = Database::getInstance();
-    $table_logs = DB_PREFIX . 'wx_ddz_logs';
-    $result = $db->query("SELECT * FROM `$table_logs` WHERE `uid` = $target_uid ORDER BY `created_at` DESC LIMIT 50");
+    $table_logs = DB_PREFIX . 'wx_games_logs';
+    $result = $db->query("SELECT * FROM `$table_logs` WHERE `game` = 'ddz' AND `uid` = $target_uid ORDER BY `created_at` DESC LIMIT 50");
     $log_entries = [];
     while ($row = $db->fetch_array($result)) {
         $log_entries[] = [
@@ -560,8 +558,8 @@ function wx_ddz_api_complete_game() {
         `status` = 0, `finished_at` = $now
         WHERE `id` = $game_id AND `uid` = $uid AND `game_token` = '" . $token . "' AND `status` = 1");
 
-    $score_table = DB_PREFIX . 'wx_ddz_scores';
-    $score_row = $db->once_fetch_array("SELECT * FROM `" . $score_table . "` WHERE `uid` = $uid AND `is_ai` = 0 LIMIT 1");
+    $score_table = DB_PREFIX . 'wx_games_scores';
+    $score_row = $db->once_fetch_array("SELECT * FROM `" . $score_table . "` WHERE `game` = 'ddz' AND `uid` = $uid AND `is_ai` = 0 LIMIT 1");
     if ($score_row) {
         $new_score   = (int)$score_row['score']      + $score_change;
         $new_wins   = (int)$score_row['wins']       + ($result === 'win'  ? 1 : 0);
@@ -581,8 +579,8 @@ function wx_ddz_api_complete_game() {
         $best   = $score_change > 0 ? $score_change : 0;
         $nickname_esc = $db->escape_string(addslashes(trim($current_user['nickname'])));
         $db->query("INSERT INTO `" . $score_table . "`
-            (`uid`, `nickname`, `avatar`, `score`, `total_games`, `wins`, `losses`, `draws`, `best_score`, `is_ai`, `updated_at`, `created_at`)
-            VALUES ($uid, '" . $nickname_esc . "', '', $score_change, 1, $wins, $losses, $draws, $best, 0, $now, $now)");
+            (`game`, `uid`, `nickname`, `avatar`, `score`, `total_games`, `wins`, `losses`, `draws`, `best_score`, `is_ai`, `updated_at`, `created_at`)
+            VALUES ('ddz', $uid, '" . $nickname_esc . "', '', $score_change, 1, $wins, $losses, $draws, $best, 0, $now, $now)");
         $new_score = $score_change;
     }
     echo json_encode(['code' => 0, 'msg' => '游戏记录已保存', 'score' => $new_score], JSON_UNESCAPED_UNICODE);
@@ -590,25 +588,49 @@ function wx_ddz_api_complete_game() {
 }
 
 function wx_ddz_api_get_shop_items() {
+    try {
     $db = Database::getInstance();
-    $table = DB_PREFIX . 'wx_ddz_shop_items';
-    $result = $db->query("SELECT * FROM `" . $table . "` WHERE `status` = 1 ORDER BY `sort_order` ASC, `id` ASC");
+    $table = DB_PREFIX . 'wx_games_shop_items';
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+
+    // 读取当前登录用户（用于判断已拥有）
+    $current_user = wx_ddz_check_user();
+    $uid = $current_user ? intval($current_user['uid']) : 0;
+
+    // 查询：当前游戏上架商品 + 全局上架商品
+    $result = $db->query("SELECT * FROM `" . $table . "` WHERE (`game` = 'ddz' OR `is_global` = 1) AND `status` = 1 ORDER BY `sort_order` ASC, `id` ASC");
     $items = [];
     while ($row = $db->fetch_array($result)) {
+        $item_id = (int)$row['id'];
+        // 判断用户是否已拥有（查询 user_items 任意游戏）
+        $owned = false;
+        $owned_qty = 0;
+        if ($uid > 0) {
+            $own = $db->once_fetch_array("SELECT SUM(CAST(`quantity` AS SIGNED) - CAST(`used` AS SIGNED)) AS cnt FROM `" . $table_inv . "` WHERE `uid` = $uid AND `item_id` = $item_id LIMIT 1");
+            $owned_qty = intval($own['cnt'] ?? 0);
+            $owned = $owned_qty > 0;
+        }
+
         $items[] = [
-            'id'            => (int)$row['id'],
+            'id'            => $item_id,
             'name'          => $row['name'],
             'description'   => $row['description'],
             'icon'          => $row['icon'],
             'item_type'     => $row['item_type'],
             'effect_data'   => stripslashes($row['effect_data']),
             'price_emlog'   => (int)$row['price_emlog'],
-            'price_ddz'     => (int)$row['price_ddz'],
+            'price_ddz'     => (int)$row['price_game'],
             'stock'         => (int)$row['stock'],
             'max_per_user'  => (int)$row['max_per_user'],
+            'is_global'     => !empty($row['is_global']),
+            'owned'         => $owned,
+            'owned_qty'     => $owned_qty,
         ];
     }
     echo json_encode(['code' => 0, 'data' => ['items' => $items]], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        echo json_encode(['code' => -1, 'msg' => '获取商品失败: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
     exit;
 }
 
@@ -617,13 +639,13 @@ function wx_ddz_api_get_inventory() {
     if (!$current_user) { echo json_encode(['code' => -1, 'msg' => '未登录'], JSON_UNESCAPED_UNICODE); exit; }
     $uid = intval($current_user['uid']);
     $db = Database::getInstance();
-    $table_inv = DB_PREFIX . 'wx_ddz_user_items';
-    $table_items = DB_PREFIX . 'wx_ddz_shop_items';
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
     $result = $db->query("
         SELECT i.*, s.`name`, s.`icon`, s.`item_type`, s.`effect_data`
         FROM `" . $table_inv . "` i
         JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
-        WHERE i.`uid` = $uid AND i.`quantity` > i.`used`
+        WHERE i.`game` = 'ddz' AND i.`uid` = $uid AND i.`quantity` > i.`used`
         ORDER BY i.`purchased_at` DESC");
     $items = [];
     while ($row = $db->fetch_array($result)) {
@@ -652,19 +674,19 @@ function wx_ddz_api_purchase_item() {
         echo json_encode(['code' => -1, 'msg' => '参数错误'], JSON_UNESCAPED_UNICODE); exit;
     }
     $db = Database::getInstance();
-    $table_items = DB_PREFIX . 'wx_ddz_shop_items';
-    $item = $db->once_fetch_array("SELECT * FROM `" . $table_items . "` WHERE `id` = $item_id AND `status` = 1 LIMIT 1");
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
+    $item = $db->once_fetch_array("SELECT * FROM `" . $table_items . "` WHERE `id` = $item_id AND `status` = 1 AND (`game` = 'ddz' OR `is_global` = 1) LIMIT 1");
     if (!$item) { echo json_encode(['code' => -1, 'msg' => '商品不存在或已下架'], JSON_UNESCAPED_UNICODE); exit; }
     $price_emlog = (int)$item['price_emlog'];
-    $price_ddz   = (int)$item['price_ddz'];
+    $price_ddz   = (int)$item['price_game'];
     if ($pay_type === 'emlog' && $price_emlog <= 0) { echo json_encode(['code' => -1, 'msg' => '该商品不支持站点积分购买'], JSON_UNESCAPED_UNICODE); exit; }
     if ($pay_type === 'ddz' && $price_ddz <= 0) { echo json_encode(['code' => -1, 'msg' => '该商品不支持斗地主积分购买'], JSON_UNESCAPED_UNICODE); exit; }
     $stock = (int)$item['stock'];
     if ($stock !== -1 && $stock <= 0) { echo json_encode(['code' => -1, 'msg' => '商品已售罄'], JSON_UNESCAPED_UNICODE); exit; }
     $max_per_user = (int)$item['max_per_user'];
     if ($max_per_user > 0) {
-        $table_inv = DB_PREFIX . 'wx_ddz_user_items';
-        $owned = $db->once_fetch_array("SELECT SUM(`quantity` - `used`) AS cnt FROM `" . $table_inv . "` WHERE `uid` = $uid AND `item_id` = $item_id LIMIT 1");
+        $table_inv = DB_PREFIX . 'wx_games_user_items';
+        $owned = $db->once_fetch_array("SELECT SUM(`quantity` - `used`) AS cnt FROM `" . $table_inv . "` WHERE `game` = 'ddz' AND `uid` = $uid AND `item_id` = $item_id LIMIT 1");
         $current_cnt = intval($owned['cnt'] ?? 0);
         if ($current_cnt >= $max_per_user) { echo json_encode(['code' => -1, 'msg' => '已达限购数量'], JSON_UNESCAPED_UNICODE); exit; }
     }
@@ -699,16 +721,28 @@ function wx_ddz_api_purchase_item() {
         wx_ddz_admin_change_score($uid, -$price_ddz, '商城购买：' . $item['name'], 'system');
     }
     $now = time();
-    $table_inv = DB_PREFIX . 'wx_ddz_user_items';
-    $existing = $db->once_fetch_array("SELECT `id`, `quantity` FROM `" . $table_inv . "` WHERE `uid` = $uid AND `item_id` = $item_id LIMIT 1");
-    if ($existing) {
-        $db->query("UPDATE `" . $table_inv . "` SET `quantity` = `quantity` + 1, `purchased_at` = $now WHERE `id` = " . intval($existing['id']));
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+    $is_global = !empty($item['is_global']);
+    if ($is_global) {
+        // 全局道具：三端同时发放
+        $all_games = ['ddz', 'mj', 'niuniu'];
+        foreach ($all_games as $g) {
+            $db->query("INSERT INTO `" . $table_inv . "` (`game`, `uid`, `item_id`, `quantity`, `purchased_at`, `expires_at`)
+                VALUES ('$g', $uid, $item_id, 1, $now, 0)
+                ON DUPLICATE KEY UPDATE `quantity` = `quantity` + 1, `purchased_at` = $now");
+        }
     } else {
-        $db->query("INSERT INTO `" . $table_inv . "` (`uid`, `item_id`, `quantity`, `used`, `purchased_at`, `expires_at`)
-            VALUES ($uid, $item_id, 1, 0, $now, 0)");
+        // 普通道具：仅当前游戏
+        $existing = $db->once_fetch_array("SELECT `id`, `quantity` FROM `" . $table_inv . "` WHERE `game` = 'ddz' AND `uid` = $uid AND `item_id` = $item_id LIMIT 1");
+        if ($existing) {
+            $db->query("UPDATE `" . $table_inv . "` SET `quantity` = `quantity` + 1, `purchased_at` = $now WHERE `game` = 'ddz' AND `id` = " . intval($existing['id']));
+        } else {
+            $db->query("INSERT INTO `" . $table_inv . "` (`game`, `uid`, `item_id`, `quantity`, `used`, `purchased_at`, `expires_at`)
+                VALUES ('ddz', $uid, $item_id, 1, 0, $now, 0)");
+        }
     }
     if ($stock !== -1) {
-        $db->query("UPDATE `" . $table_items . "` SET `stock` = `stock` - 1 WHERE `id` = $item_id AND `stock` > 0");
+        $db->query("UPDATE `" . $table_items . "` SET `stock` = `stock` - 1 WHERE `game` = 'ddz' AND `id` = $item_id AND `stock` > 0");
     }
     echo json_encode(['code' => 0, 'msg' => '购买成功！'], JSON_UNESCAPED_UNICODE);
     exit;
@@ -721,20 +755,27 @@ function wx_ddz_api_use_item() {
     $inv_id = isset($_POST['inv_id']) ? intval($_POST['inv_id']) : 0;
     if ($inv_id <= 0) { echo json_encode(['code' => -1, 'msg' => '参数错误'], JSON_UNESCAPED_UNICODE); exit; }
     $db = Database::getInstance();
-    $table_inv = DB_PREFIX . 'wx_ddz_user_items';
-    $table_items = DB_PREFIX . 'wx_ddz_shop_items';
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
     $row = $db->once_fetch_array("
         SELECT i.*, s.`item_type`, s.`effect_data` FROM `" . $table_inv . "` i
         JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
         WHERE i.`id` = $inv_id AND i.`uid` = $uid AND i.`quantity` > i.`used` LIMIT 1");
     if (!$row) { echo json_encode(['code' => -1, 'msg' => '道具不存在或已用完'], JSON_UNESCAPED_UNICODE); exit; }
     $item_type = $row['item_type'];
+    $global_types = ['title_colored', 'title_effect'];
     $cosmetic_types = ['title_colored', 'title_effect', 'card_back', 'emoticon', 'bomb_effect', 'title_badge'];
     if (in_array($item_type, $cosmetic_types, true)) {
         $db->query("UPDATE `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
             SET i.`is_active` = 0 WHERE i.`uid` = $uid AND s.`item_type` = '" . $db->escape_string($item_type) . "'");
-        $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `id` = " . intval($row['id']));
+        if (in_array($item_type, $global_types, true)) {
+            // 全局道具类型：激活所有游戏的记录
+            $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `uid` = $uid AND `item_id` = " . intval($row['item_id']));
+        } else {
+            $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `game` = 'ddz' AND `id` = " . intval($row['id']));
+        }
         echo json_encode(['code' => 0, 'msg' => '✅ 已激活', 'item_type' => $item_type, 'effect_data' => $row['effect_data']], JSON_UNESCAPED_UNICODE);
+    } elseif ($item_type === 'score_buff') {
     } elseif ($item_type === 'score_buff') {
         $effect = json_decode(stripslashes($row['effect_data']), true);
         $multiplier = isset($effect['multiplier']) ? floatval($effect['multiplier']) : 2;
@@ -746,7 +787,7 @@ function wx_ddz_api_use_item() {
         $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1, `charges` = $games, `used` = 0 WHERE `id` = " . intval($row['id']));
         echo json_encode(['code' => 0, 'msg' => '✅ ' . $multiplier . '倍加成已激活，剩余' . $games . '局', 'multiplier' => $multiplier, 'games' => $games], JSON_UNESCAPED_UNICODE);
     } else {
-        $db->query("UPDATE `" . $table_inv . "` SET `used` = `used` + 1 WHERE `id` = " . intval($row['id']));
+        $db->query("UPDATE `" . $table_inv . "` SET `used` = `used` + 1 WHERE `game` = 'ddz' AND `id` = " . intval($row['id']));
         echo json_encode(['code' => 0, 'msg' => '✅ 使用成功'], JSON_UNESCAPED_UNICODE);
     }
     exit;
@@ -757,8 +798,8 @@ function wx_ddz_api_get_active_effects() {
     if (!$current_user) { echo json_encode(['code' => 0, 'data' => []], JSON_UNESCAPED_UNICODE); exit; }
     $uid = intval($current_user['uid']);
     $db = Database::getInstance();
-    $table_inv = DB_PREFIX . 'wx_ddz_user_items';
-    $table_items = DB_PREFIX . 'wx_ddz_shop_items';
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
     $result = $db->query("
         SELECT i.`id` AS inv_id, i.`item_id`, s.`item_type`, s.`effect_data`, s.`name`
         FROM `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
@@ -777,8 +818,8 @@ function wx_ddz_api_get_score_buff() {
     if (!$current_user) { echo json_encode(['code' => 0, 'buffs' => []], JSON_UNESCAPED_UNICODE); exit; }
     $uid = intval($current_user['uid']);
     $db = Database::getInstance();
-    $table_inv = DB_PREFIX . 'wx_ddz_user_items';
-    $table_items = DB_PREFIX . 'wx_ddz_shop_items';
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
     $row = $db->once_fetch_array("
         SELECT i.`id`, i.`charges`, i.`used`, s.`effect_data`
         FROM `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
@@ -803,8 +844,8 @@ function wx_ddz_api_consume_score_buff() {
     if (!$current_user) { echo json_encode(['code' => -1, 'msg' => '未登录'], JSON_UNESCAPED_UNICODE); exit; }
     $uid = intval($current_user['uid']);
     $db = Database::getInstance();
-    $table_inv = DB_PREFIX . 'wx_ddz_user_items';
-    $table_items = DB_PREFIX . 'wx_ddz_shop_items';
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
     $row = $db->once_fetch_array("
         SELECT i.`id`, i.`charges`, i.`used`, s.`effect_data`
         FROM `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
@@ -813,7 +854,7 @@ function wx_ddz_api_consume_score_buff() {
     $remaining = (int)$row['charges'] - (int)$row['used'] - 1;
     $effect = json_decode(stripslashes($row['effect_data']), true);
     $consumed_multiplier = isset($effect['multiplier']) ? floatval($effect['multiplier']) : 2;
-    $db->query("UPDATE `" . $table_inv . "` SET `used` = `used` + 1 WHERE `id` = " . (int)$row['id']);
+    $db->query("UPDATE `" . $table_inv . "` SET `used` = `used` + 1 WHERE `game` = 'ddz' AND `id` = " . (int)$row['id']);
     if ($remaining <= 0) {
         $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 0, `used` = 0, `charges` = 0,
             `quantity` = GREATEST(`quantity` - 1, 0) WHERE `id` = " . (int)$row['id']);
@@ -829,11 +870,11 @@ function wx_ddz_api_admin_get_inventory() {
     $admin_uid = isset($_GET['uid']) ? intval($_GET['uid']) : 0;
     if ($admin_uid <= 0) { echo json_encode(['code' => -1, 'msg' => '无效的用户ID'], JSON_UNESCAPED_UNICODE); exit; }
     $db = Database::getInstance();
-    $table_inv = DB_PREFIX . 'wx_ddz_user_items';
-    $table_items = DB_PREFIX . 'wx_ddz_shop_items';
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
     $result = $db->query("SELECT i.*, s.`name`, s.`icon`, s.`item_type`, s.`effect_data`
         FROM `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
-        WHERE i.`uid` = $admin_uid ORDER BY i.`purchased_at` DESC");
+        WHERE i.`uid` = $admin_uid AND i.`game` = 'ddz' ORDER BY i.`purchased_at` DESC");
     $items = [];
     while ($row = $db->fetch_array($result)) {
         $items[] = ['inv_id' => (int)$row['id'], 'item_id' => (int)$row['item_id'],
@@ -852,17 +893,17 @@ function wx_ddz_api_admin_give_item() {
     $quantity = isset($_POST['quantity']) ? max(1, intval($_POST['quantity'])) : 1;
     if ($admin_uid <= 0 || $item_id <= 0) { echo json_encode(['code' => -1, 'msg' => '参数无效'], JSON_UNESCAPED_UNICODE); exit; }
     $db = Database::getInstance();
-    $table_inv = DB_PREFIX . 'wx_ddz_user_items';
-    $table_items = DB_PREFIX . 'wx_ddz_shop_items';
-    $item_row = $db->once_fetch_array("SELECT `id`, `name` FROM `" . $table_items . "` WHERE `id` = $item_id LIMIT 1");
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
+    $item_row = $db->once_fetch_array("SELECT `id`, `name` FROM `" . $table_items . "` WHERE `game` = 'ddz' AND `id` = $item_id LIMIT 1");
     if (!$item_row) { echo json_encode(['code' => -1, 'msg' => '商品不存在'], JSON_UNESCAPED_UNICODE); exit; }
-    $existing = $db->once_fetch_array("SELECT `id`, `quantity` FROM `" . $table_inv . "` WHERE `uid` = $admin_uid AND `item_id` = $item_id LIMIT 1");
+    $existing = $db->once_fetch_array("SELECT `id`, `quantity` FROM `" . $table_inv . "` WHERE `game` = 'ddz' AND `uid` = $admin_uid AND `item_id` = $item_id LIMIT 1");
     if ($existing) {
-        $db->query("UPDATE `" . $table_inv . "` SET `quantity` = `quantity` + $quantity WHERE `id` = " . (int)$existing['id']);
+        $db->query("UPDATE `" . $table_inv . "` SET `quantity` = `quantity` + $quantity WHERE `game` = 'ddz' AND `id` = " . (int)$existing['id']);
     } else {
         $now = time();
-        $db->query("INSERT INTO `" . $table_inv . "` (`uid`, `item_id`, `quantity`, `used`, `is_active`, `purchased_at`, `expires_at`)
-            VALUES ($admin_uid, $item_id, $quantity, 0, 0, $now, 0)");
+        $db->query("INSERT INTO `" . $table_inv . "` (`game`, `uid`, `item_id`, `quantity`, `used`, `is_active`, `purchased_at`, `expires_at`)
+            VALUES ('ddz', $admin_uid, $item_id, $quantity, 0, 0, $now, 0)");
     }
     echo json_encode(['code' => 0, 'msg' => '发放成功'], JSON_UNESCAPED_UNICODE);
     exit;
@@ -875,17 +916,17 @@ function wx_ddz_api_admin_remove_item() {
     $quantity = isset($_POST['quantity']) ? max(1, intval($_POST['quantity'])) : 1;
     if ($admin_uid <= 0 || $item_id <= 0) { echo json_encode(['code' => -1, 'msg' => '参数无效'], JSON_UNESCAPED_UNICODE); exit; }
     $db = Database::getInstance();
-    $table_inv = DB_PREFIX . 'wx_ddz_user_items';
-    $existing = $db->once_fetch_array("SELECT `id`, `quantity`, `used` FROM `" . $table_inv . "` WHERE `uid` = $admin_uid AND `item_id` = $item_id LIMIT 1");
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+    $existing = $db->once_fetch_array("SELECT `id`, `quantity`, `used` FROM `" . $table_inv . "` WHERE `game` = 'ddz' AND `uid` = $admin_uid AND `item_id` = $item_id LIMIT 1");
     if (!$existing) { echo json_encode(['code' => -1, 'msg' => '该玩家没有此道具'], JSON_UNESCAPED_UNICODE); exit; }
     $current_qty = (int)$existing['quantity'];
     if ($current_qty <= 0) { echo json_encode(['code' => -1, 'msg' => '库存已为0'], JSON_UNESCAPED_UNICODE); exit; }
     $remove_qty = min($quantity, $current_qty);
     $new_qty = $current_qty - $remove_qty;
     if ($new_qty <= 0) {
-        $db->query("DELETE FROM `" . $table_inv . "` WHERE `id` = " . (int)$existing['id']);
+        $db->query("DELETE FROM `" . $table_inv . "` WHERE `game` = 'ddz' AND `id` = " . (int)$existing['id']);
     } else {
-        $db->query("UPDATE `" . $table_inv . "` SET `quantity` = $new_qty WHERE `id` = " . (int)$existing['id']);
+        $db->query("UPDATE `" . $table_inv . "` SET `quantity` = $new_qty WHERE `game` = 'ddz' AND `id` = " . (int)$existing['id']);
     }
     echo json_encode(['code' => 0, 'msg' => '扣除成功'], JSON_UNESCAPED_UNICODE);
     exit;

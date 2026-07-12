@@ -4,10 +4,10 @@ defined('EMLOG_ROOT') || exit('access denied!');
 require_once __DIR__ . '/wx_games_ddz_fn.php';
 
 $db = Database::getInstance();
-$storage = Storage::getInstance('wx_ddz');
 
 // ========== 保存基本设置 ==========
 if (Input::postStrVar('ddz_action') === 'save_setting') {
+    $storage = Storage::getInstance('wx_ddz');
     // 读取现有配置，只覆盖提交的字段（防止单个表单覆盖其他设置）
     $config = wx_ddz_get_config();
     if (isset($_POST['title'])) {
@@ -22,15 +22,46 @@ if (Input::postStrVar('ddz_action') === 'save_setting') {
     if (isset($_POST['penalty_multiplier'])) {
         $config['penalty_multiplier'] = max(0.1, min(10, floatval(str_replace(',', '.', Input::postStrVar('penalty_multiplier', '1.0')))));
     }
+    if (isset($_POST['base_bet'])) {
+        $config['base_bet'] = Input::postIntVar('base_bet', 100);
+    }
     if (isset($_POST['recharge_link'])) {
         $config['recharge_link'] = addslashes(trim(Input::postStrVar('recharge_link', '')));
     }
+    if (isset($_POST['notice'])) {
+        $config['notice'] = addslashes(trim(Input::postStrVar('notice', $config['notice'])));
+    }
+    if (isset($_POST['recent_updates'])) {
+        $config['recent_updates'] = addslashes(trim(Input::postStrVar('recent_updates', $config['recent_updates'])));
+    }
     $storage->setValue('config', $config, 'array');
+    // 如果有数据清理请求
+    if (isset($_POST['do_reset'])) {
+        $actions = [];
+        if (isset($_POST['reset_scores'])) {
+            $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_scores` WHERE `game` = 'ddz' AND `is_ai` = 0");
+            $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_logs`");
+            $actions[] = '积分';
+        }
+        if (isset($_POST['reset_games'])) {
+            $db->query("DELETE FROM `" . DB_PREFIX . "wx_ddz_games`");
+            $actions[] = '战绩';
+        }
+        if (isset($_POST['reset_items'])) {
+            $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_shop_items` WHERE `game` = 'ddz'");
+            $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_user_items` WHERE `game` = 'ddz'");
+            $actions[] = '道具';
+        }
+        if (!empty($actions)) {
+            emMsg('设置已保存，已清理：' . implode('、', $actions), './plugin.php?plugin=wx_games&game=ddz');
+        }
+    }
     emMsg('设置已保存', './plugin.php?plugin=wx_games&game=ddz');
 }
 
 // ========== 保存AI设置 ==========
 if (Input::postStrVar('ddz_action') === 'save_ai_setting') {
+    $storage = Storage::getInstance('wx_ddz');
     $ai_count = max(2, min(10, Input::postIntVar('ai_count', 2)));
     $ai_players = [];
     $avatar_files = ['boram.jpg', 'qri.jpg', 'soyeon.jpg', 'eunjung.jpg', 'hyomin.jpg', 'jiyeon.jpg'];
@@ -63,6 +94,7 @@ if (Input::postStrVar('ddz_action') === 'save_ai_setting') {
 
 // ========== 保存公告与更新内容 ==========
 if (Input::postStrVar('ddz_action') === 'save_content') {
+    $storage = Storage::getInstance('wx_ddz');
     $config = wx_ddz_get_config();
     $config['notice'] = addslashes(trim(Input::postStrVar('notice', $config['notice'])));
     $config['recent_updates'] = addslashes(trim(Input::postStrVar('recent_updates', $config['recent_updates'])));
@@ -91,24 +123,108 @@ if (Input::postStrVar('ddz_action') === 'change_score') {
     }
 }
 
-if (Input::getStrVar('ddz_action') === 'delete') {
-    $admin_uid = Input::getIntVar('uid', 0);
+if (Input::postStrVar('ddz_action') === 'delete_user') {
+    $admin_uid = Input::postIntVar('uid', 0);
     if ($admin_uid > 0) {
-        $table_scores = DB_PREFIX . 'wx_ddz_scores';
+        $table_scores = DB_PREFIX . 'wx_games_scores';
+        $table_games = DB_PREFIX . 'wx_ddz_games';
+        $table_logs = DB_PREFIX . 'wx_games_logs';
         $db->query("DELETE FROM `$table_scores` WHERE `uid` = $admin_uid AND `is_ai` = 0");
+        $db->query("DELETE FROM `$table_games` WHERE `uid` = $admin_uid");
+        $db->query("DELETE FROM `$table_logs` WHERE `uid` = $admin_uid");
     }
-    emMsg('记录已删除', './plugin.php?plugin=wx_games&game=ddz');
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['code' => 0, 'message' => '已删除'], JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
-if (Input::getStrVar('action') === 'reset') {
-    $db->query("DELETE FROM `" . DB_PREFIX . "wx_ddz_scores` WHERE `is_ai` = 0");
-    $db->query("DELETE FROM `" . DB_PREFIX . "wx_ddz_games`");
-    $db->query("DELETE FROM `" . DB_PREFIX . "wx_ddz_logs`");
-    emMsg('积分数据已清空', './plugin.php?plugin=wx_games&game=ddz');
+// ========== 日志分页 AJAX ==========
+if (Input::getStrVar('ddz_action') === 'get_logs_page') {
+    $log_page = max(1, Input::getIntVar('log_page', 1));
+    $log_search = addslashes(trim(Input::getStrVar('search', '')));
+    $logPageSize = 10;
+    $log_offset = ($log_page - 1) * $logPageSize;
+    $table_logs = DB_PREFIX . 'wx_games_logs';
+    $log_where = "WHERE l.`game` = 'ddz'";
+    if ($log_search) {
+        $log_where .= " AND (l.`nickname` LIKE '%$log_search%' OR l.`uid` = '" . intval($log_search) . "')";
+    }
+    $db = Database::getInstance();
+    $total = (int)$db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `$table_logs` l $log_where")['cnt'];
+    $totalPages = max(1, ceil($total / $logPageSize));
+    $rows = $db->query("SELECT l.*, IFNULL(u.nickname, '未知') AS nickname FROM `$table_logs` l LEFT JOIN `" . DB_PREFIX . "user` u ON l.uid = u.uid $log_where ORDER BY l.created_at DESC LIMIT $log_offset, $logPageSize");
+    $data = [];
+    while ($r = $db->fetch_array($rows)) {
+        $data[] = $r;
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['code' => 0, 'data' => $data, 'totalPages' => $totalPages, 'currentPage' => $log_page], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ========== 用户列表分页 AJAX ==========
+if (Input::getStrVar('ddz_action') === 'get_users_page') {
+    $page = max(1, Input::getIntVar('page', 1));
+    $search = addslashes(trim(Input::getStrVar('search', '')));
+    $pageSize = 10;
+    $offset = ($page - 1) * $pageSize;
+    $db = Database::getInstance();
+    $table_scores = DB_PREFIX . 'wx_games_scores';
+    $where = "WHERE `game` = 'ddz' AND `is_ai` = 0";
+    if ($search) {
+        $where = "WHERE (`nickname` LIKE '%$search%' OR `uid` = '$search') AND `game` = 'ddz' AND `is_ai` = 0";
+    }
+    $total = (int)$db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `$table_scores` $where")['cnt'];
+    $totalPages = max(1, ceil($total / $pageSize));
+    $rows = $db->query("SELECT * FROM `$table_scores` $where ORDER BY `score` DESC LIMIT $offset, $pageSize");
+    $data = [];
+    while ($row = $db->fetch_array($rows)) {
+        $uid = (int)$row['uid'];
+        $user_row = $db->once_fetch_array("SELECT `nickname`, `photo` FROM `" . DB_PREFIX . "user` WHERE `uid` = $uid LIMIT 1");
+        $data[] = [
+            'id' => (int)$row['id'],
+            'uid' => $uid,
+            'nickname' => $user_row ? $user_row['nickname'] : $row['nickname'],
+            'avatar' => $user_row ? $user_row['photo'] : '',
+            'score' => (int)$row['score'],
+            'total_games' => (int)$row['total_games'],
+            'wins' => (int)$row['wins'],
+            'losses' => (int)$row['losses'],
+            'draws' => (int)$row['draws'],
+            'best_score' => (int)$row['best_score'],
+        ];
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['code' => 0, 'data' => $data, 'totalPages' => $totalPages, 'currentPage' => $page], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ========== 数据清理（复选框分项）==========
+if (Input::postStrVar('ddz_action') === 'reset_data') {
+    $actions = [];
+    if (isset($_POST['reset_scores'])) $actions[] = '积分';
+    if (isset($_POST['reset_games']))  $actions[] = '战绩';
+    if (isset($_POST['reset_items']))  $actions[] = '道具';
+    if (!empty($actions)) {
+        if (isset($_POST['reset_scores'])) {
+            $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_scores` WHERE `game` = 'ddz' AND `is_ai` = 0");
+            $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_logs`");
+        }
+        if (isset($_POST['reset_games'])) {
+            $db->query("DELETE FROM `" . DB_PREFIX . "wx_ddz_games`");
+        }
+        if (isset($_POST['reset_items'])) {
+            $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_shop_items` WHERE `game` = 'ddz'");
+            $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_user_items` WHERE `game` = 'ddz'");
+        }
+        emMsg('已清理：' . implode('、', $actions), './plugin.php?plugin=wx_games&game=ddz');
+    } else {
+        emMsg('请至少勾选一项', './plugin.php?plugin=wx_games&game=ddz');
+    }
 }
 
 // ========== 商城商品管理 ==========
-$table_shop = DB_PREFIX . 'wx_ddz_shop_items';
+$table_shop = DB_PREFIX . 'wx_games_shop_items';
 
 if (Input::postStrVar('ddz_action') === 'add_shop_item') {
     $name = addslashes(trim(Input::postStrVar('name', '')));
@@ -124,8 +240,8 @@ if (Input::postStrVar('ddz_action') === 'add_shop_item') {
     $icon = addslashes(trim(Input::postStrVar('icon', '')));
     $sort_order = Input::postIntVar('sort_order', 0);
     $now = time();
-    $db->query("INSERT INTO `$table_shop` (`name`, `description`, `icon`, `item_type`, `effect_data`, `price_emlog`, `price_ddz`, `stock`, `max_per_user`, `sort_order`, `status`, `created_at`)
-        VALUES ('$name', '$description', '$icon', '$item_type', '$effect_data', $price_emlog, $price_ddz, $stock, $max_per_user, $sort_order, 1, $now)");
+    $db->query("INSERT INTO `$table_shop` (`game`, `name`, `description`, `icon`, `item_type`, `effect_data`, `price_emlog`, `price_game`, `stock`, `max_per_user`, `sort_order`, `status`, `created_at`)
+        VALUES ('ddz', '$name', '$description', '$icon', '$item_type', '$effect_data', $price_emlog, $price_ddz, $stock, $max_per_user, $sort_order, 1, $now)");
     emMsg('商品已添加', './plugin.php?plugin=wx_games&game=ddz');
 }
 
@@ -148,7 +264,7 @@ if (Input::postStrVar('ddz_action') === 'edit_shop_item') {
     $db->query("UPDATE `$table_shop` SET
         `name` = '$name', `description` = '$description', `icon` = '$icon',
         `item_type` = '$item_type', `effect_data` = '$effect_data',
-        `price_emlog` = $price_emlog, `price_ddz` = $price_ddz,
+        `price_emlog` = $price_emlog, `price_game` = $price_ddz,
         `stock` = $stock, `max_per_user` = $max_per_user,
         `sort_order` = $sort_order, `status` = $status
         WHERE `id` = $edit_id");
@@ -166,8 +282,10 @@ if (Input::getStrVar('ddz_action') === 'delete_shop_item') {
 // ========== 读取设置 ==========
 $config = wx_ddz_get_config();
 $penalty_multiplier = isset($config['penalty_multiplier']) ? floatval($config['penalty_multiplier']) : 1.0;
+$base_bet = isset($config['base_bet']) ? intval($config['base_bet']) : 100;
 
 // 读取AI玩家设置
+$storage = Storage::getInstance('wx_ddz');
 $ai_players = [];
 try {
     $saved_ai = $storage->getValue('ai_players');
@@ -185,10 +303,12 @@ if (empty($ai_players)) {
 $ai_count = count($ai_players);
 $plugin_assets_url = WX_DDZ_URL . 'assets/';
 
-// 读取商城商品数据
+// 读取商城商品数据（支持按类型筛选）
 $shop_items = [];
+$filter_type = addslashes(trim(Input::getStrVar('filter_type', '')));
 try {
-    $shop_result = $db->query("SELECT * FROM `$table_shop` ORDER BY `sort_order` ASC, `id` ASC");
+    $shop_where = $filter_type ? "WHERE `game` = 'ddz' AND `item_type` = '$filter_type'" : "WHERE `game` = 'ddz'";
+    $shop_result = $db->query("SELECT * FROM `$table_shop` $shop_where ORDER BY `sort_order` ASC, `id` ASC");
     while ($row = $db->fetch_array($shop_result)) {
         // stripslashes 修复存量被 addslashes 污染的 effect_data
         if (isset($row['effect_data'])) {
@@ -218,7 +338,7 @@ $item_type_icons = [
 ];
 
 // 获取背包和购买统计数据（带分页）
-$table_inv = DB_PREFIX . 'wx_ddz_user_items';
+$table_inv = DB_PREFIX . 'wx_games_user_items';
 $pageSize = 20;
 
 // 消耗统计分页
@@ -231,6 +351,7 @@ try {
         SELECT COUNT(DISTINCT i.`item_id`) AS cnt
         FROM `$table_inv` i
         JOIN `$table_shop` s ON i.`item_id` = s.`id`
+        WHERE i.`game` = 'ddz'
     ");
     $stat_total = (int)($stat_count['cnt'] ?? 0);
     $inv_result = $db->query("
@@ -240,6 +361,7 @@ try {
                COUNT(DISTINCT i.`uid`) AS buyer_count
         FROM `$table_inv` i
         JOIN `$table_shop` s ON i.`item_id` = s.`id`
+        WHERE i.`game` = 'ddz'
         GROUP BY i.`item_id`
         ORDER BY total_bought DESC
         LIMIT $pageSize OFFSET $stat_offset
@@ -259,12 +381,14 @@ try {
     $buy_count = $db->once_fetch_array("
         SELECT COUNT(*) AS cnt FROM `$table_inv` i
         JOIN `$table_shop` s ON i.`item_id` = s.`id`
+        WHERE i.`game` = 'ddz'
     ");
     $buy_total = (int)($buy_count['cnt'] ?? 0);
     $purchase_result = $db->query("
         SELECT i.*, s.`name` AS item_name, s.`icon` AS item_icon
         FROM `$table_inv` i
         JOIN `$table_shop` s ON i.`item_id` = s.`id`
+        WHERE i.`game` = 'ddz'
         ORDER BY i.`purchased_at` DESC
         LIMIT $pageSize OFFSET $buy_offset
     ");
@@ -291,17 +415,17 @@ function render_pagination($current, $total, $param_name) {
 }
 
 // ========== 积分管理数据 ==========
-$table_scores = DB_PREFIX . 'wx_ddz_scores';
-$table_logs = DB_PREFIX . 'wx_ddz_logs';
+$table_scores = DB_PREFIX . 'wx_games_scores';
+$table_logs = DB_PREFIX . 'wx_games_logs';
 
 // 搜索 & 分页
 $search = addslashes(trim(Input::getStrVar('search', '')));
-$where = "WHERE `is_ai` = 0";
+$where = "WHERE `game` = 'ddz' AND `is_ai` = 0";
 if ($search) {
-    $where = "WHERE (`nickname` LIKE '%$search%' OR `uid` = '$search') AND `is_ai` = 0";
+    $where = "WHERE (`nickname` LIKE '%$search%' OR `uid` = '$search') AND `game` = 'ddz' AND `is_ai` = 0";
 }
 $page = max(1, Input::getIntVar('page', 1));
-$pageSize = 20;
+$pageSize = 10;
 $offset = ($page - 1) * $pageSize;
 
 // 用户列表
@@ -330,22 +454,55 @@ $count_row = $db->once_fetch_array("SELECT COUNT(*) as total FROM `$table_scores
 $total_users_count = (int)$count_row['total'];
 $totalPages = ceil($total_users_count / $pageSize);
 
-// 日志（最近50条）
-$logs_result = $db->query("SELECT * FROM `$table_logs` ORDER BY `created_at` DESC LIMIT 50");
+// 日志（分页，每页10条）
+$logPage = max(1, Input::getIntVar('log_page', 1));
+$logPageSize = 10;
+$logOffset = ($logPage - 1) * $logPageSize;
+$total_log_count = 0;
+$logTotalPages = 1;
 $logs = [];
-while ($row = $db->fetch_array($logs_result)) {
-    $logs[] = [
-        'id' => (int)$row['id'], 'uid' => (int)$row['uid'], 'nickname' => $row['nickname'],
-        'score_change' => (int)$row['score_change'], 'score_before' => (int)$row['score_before'],
-        'score_after' => (int)$row['score_after'], 'reason' => $row['reason'],
-        'operator' => $row['operator'], 'created_at' => (int)$row['created_at'],
-    ];
-}
+try {
+    $logCountRow = $db->once_fetch_array("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_games_logs` WHERE `game` = 'ddz'");
+    $total_log_count = (int)($logCountRow ? $logCountRow['total'] : 0);
+    $logTotalPages = max(1, ceil($total_log_count / $logPageSize));
+    $logs_result = $db->query("SELECT * FROM `" . DB_PREFIX . "wx_games_logs` WHERE `game` = 'ddz' ORDER BY `created_at` DESC LIMIT $logOffset, $logPageSize");
+    while ($row = $db->fetch_array($logs_result)) {
+        $logs[] = [
+            'id' => (int)$row['id'], 'uid' => (int)$row['uid'], 'nickname' => $row['nickname'],
+            'score_change' => (int)$row['score_change'], 'score_before' => (int)$row['score_before'],
+            'score_after' => (int)$row['score_after'], 'reason' => $row['reason'],
+            'operator' => $row['operator'], 'created_at' => (int)$row['created_at'],
+        ];
+    }
+} catch (\Throwable $e) {}
 
 // ========== 设置页面渲染 ==========
 function wx_ddz_admin_render() {
-    global $config, $penalty_multiplier, $ai_players, $ai_count, $plugin_assets_url, $db;
-    global $users, $logs, $search, $page, $totalPages, $total_users_count, $table_scores, $shop_items, $item_types, $item_type_icons, $inventory_stats, $purchase_history, $stat_page, $stat_total_pages, $buy_page, $buy_total_pages, $pageSize;
+    global $config, $penalty_multiplier, $base_bet, $ai_players, $ai_count, $plugin_assets_url, $db;
+    global $users, $logs, $search, $page, $totalPages, $total_users_count, $table_scores, $shop_items, $item_types, $item_type_icons, $inventory_stats, $purchase_history, $stat_page, $stat_total_pages, $buy_page, $buy_total_pages, $pageSize, $filter_type;
+    global $logPage, $logTotalPages, $total_log_count;
+    // 调试：确认表名和条数
+    // $debug_r = $db->once_fetch_array("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_games_logs` WHERE `game` = 'ddz'");
+    // 如果 $total_log_count 不对，用以下查询校正：
+    if ($total_log_count === 0) {
+        try {
+            $logCountRow2 = $db->once_fetch_array("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_games_logs` WHERE `game` = 'ddz'");
+            if ($logCountRow2 && (int)$logCountRow2['total'] > 0) {
+                $total_log_count = (int)$logCountRow2['total'];
+                $logTotalPages = max(1, ceil($total_log_count / 10));
+                $logs_result2 = $db->query("SELECT * FROM `" . DB_PREFIX . "wx_games_logs` WHERE `game` = 'ddz' ORDER BY `created_at` DESC LIMIT " . (($logPage - 1) * 10) . ", 10");
+                $logs = [];
+                while ($row = $db->fetch_array($logs_result2)) {
+                    $logs[] = [
+                        'id' => (int)$row['id'], 'uid' => (int)$row['uid'], 'nickname' => $row['nickname'],
+                        'score_change' => (int)$row['score_change'], 'score_before' => (int)$row['score_before'],
+                        'score_after' => (int)$row['score_after'], 'reason' => $row['reason'],
+                        'operator' => $row['operator'], 'created_at' => (int)$row['created_at'],
+                    ];
+                }
+            }
+        } catch (\Throwable $e) {}
+    }
 ?>
 
 <div class="container-fluid">
@@ -363,132 +520,115 @@ function wx_ddz_admin_render() {
     <div class="tab-content" id="settingTabsContent">
         <!-- ========== 基本设置 ========== -->
         <div class="tab-pane fade show active" id="basic" role="tabpanel">
+            <form method="post" action="./plugin.php?plugin=wx_games&game=ddz">
+                <input type="hidden" name="ddz_action" value="save_setting">
             <div class="row">
                 <div class="col-lg-6">
                     <div class="wx-card card-dark">
                         <div class="card-header">基本设置</div>
                         <div class="card-body">
-                            <form method="post" action="./plugin.php?plugin=wx_games&game=ddz">
-                                <input type="hidden" name="ddz_action" value="save_setting">
-                                <div class="form-group">
-                                    <label>游戏标题</label>
-                                    <input type="text" class="form-control" name="title" value="<?php echo htmlspecialchars($config['title']); ?>">
-                                    <small class="form-text text-muted">显示在游戏页面和导航菜单中的标题</small>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label>游戏标题</label>
+                                            <input type="text" class="form-control" name="title" value="<?php echo htmlspecialchars($config['title']); ?>">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label>游客模式</label>
+                                            <select class="form-control" name="guest_play">
+                                                <option value="1" <?php echo $config['guest_play'] == '1' ? 'selected' : ''; ?>>开启</option>
+                                                <option value="0" <?php echo $config['guest_play'] == '0' ? 'selected' : ''; ?>>关闭</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label>游客模式</label>
-                                    <select class="form-control" name="guest_play">
-                                        <option value="1" <?php echo $config['guest_play'] == '1' ? 'selected' : ''; ?>>开启</option>
-                                        <option value="0" <?php echo $config['guest_play'] == '0' ? 'selected' : ''; ?>>关闭</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>排行榜最大条目数</label>
-                                    <input type="number" class="form-control" name="max_entries" value="<?php echo (int)$config['max_entries']; ?>" min="10" max="500">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label>底分</label>
+                                            <input class="form-control" name="base_bet" type="number" value="<?php echo $base_bet; ?>">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label>排行榜最大条目数</label>
+                                            <input type="number" class="form-control" name="max_entries" value="<?php echo (int)$config['max_entries']; ?>" min="10" max="500">
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="form-group">
                                     <label>积分充值链接</label>
-                                    <input type="url" class="form-control" name="recharge_link" value="<?php echo htmlspecialchars(isset($config['recharge_link']) ? $config['recharge_link'] : ''); ?>" placeholder="例如：https://example.com/recharge">
-                                    <small class="form-text text-muted">前台"充值"按钮的跳转链接，留空则不显示充值按钮</small>
+                                    <input type="url" class="form-control" name="recharge_link" value="<?php echo htmlspecialchars(isset($config['recharge_link']) ? $config['recharge_link'] : ''); ?>" placeholder="https://...">
                                 </div>
-                                <button type="submit" class="wx-btn">保存设置</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-lg-6">
-                    <div class="wx-card card-dark">
-                        <div class="card-header">防逃跑惩罚设置</div>
-                        <div class="card-body">
-                            <form method="post" action="./plugin.php?plugin=wx_games&game=ddz">
-                                <input type="hidden" name="ddz_action" value="save_setting">
-                                <div class="form-group">
-                                    <label>惩罚倍率</label>
+                                <hr>
+                                <div class="form-group" style="margin-bottom:8px">
+                                    <label style="font-weight:600;color:#e17055">防逃跑惩罚倍率</label>
                                     <div class="input-group">
-                                        <input type="number" class="form-control" name="penalty_multiplier" value="<?php echo number_format($penalty_multiplier, 1, '.', ''); ?>" min="0.1" max="10" step="0.1">
+                                        <input type="number" class="form-control" name="penalty_multiplier" value="<?php echo number_format($penalty_multiplier, 1, '.', ''); ?>" min="0.1" max="10" step="0.1" style="max-width:180px">
                                         <span class="input-group-text" style="border-radius:0 8px 8px 0;background:#f8f9fe;border:1px solid #e0e2ea;border-left:none;padding:10px 14px;">x</span>
+                                        <span style="margin-left:12px;align-self:center;font-size:13px;color:#888">惩罚 = 底分 × 游戏倍率 × 此倍率</span>
                                     </div>
-                                    <small class="form-text text-muted">惩罚积分 = 100 × 游戏倍率 × 此倍率。例如倍率设为 2.0，游戏倍率 3，逃跑扣 100×3×2 = 600 分</small>
                                 </div>
-                                <div class="wx-info-block">
-                                    <strong>当前生效：</strong>逃跑扣除 <strong><?php echo 100 * $penalty_multiplier; ?>×游戏倍率</strong> 分
+                                <div style="font-size:13px;color:#888;margin-bottom:8px">
+                                    <strong>当前：</strong>逃跑扣 <strong style="color:#e17055"><?php echo $base_bet * $penalty_multiplier; ?>×游戏倍率</strong> 分
                                 </div>
-                                <button type="submit" class="wx-btn" style="margin-top:12px;">保存设置</button>
-                            </form>
+                            <hr>
+                            <!-- 数据管理 -->
+                            <div>
+                                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+                                    <span style="font-size:14px;font-weight:600">🗃️ 数据管理</span>
+                                    <span style="color:#aaa;font-size:13px">玩家记录数：
+                                        <?php
+                                        try {
+                                            $ddz_cr = $db->query("SELECT COUNT(*) as total FROM `$table_scores` WHERE `game` = 'ddz' AND `is_ai` = 0");
+                                            $ddz_crow = $db->fetch_array($ddz_cr);
+                                            echo '<strong>' . (int)$ddz_crow['total'] . '</strong>';
+                                        } catch (\Throwable $e) { echo '0'; }
+                                        ?>
+                                    </span>
+                                </div>
+                                <div>
+                                    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+                                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;font-weight:400">
+                                            <input type="checkbox" name="reset_scores" value="1"> 🏆 清空积分
+                                        </label>
+                                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;font-weight:400">
+                                            <input type="checkbox" name="reset_games" value="1"> 📊 清空战绩
+                                        </label>
+                                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;font-weight:400">
+                                            <input type="checkbox" name="reset_items" value="1"> 🎒 清空道具
+                                        </label>
+                                        <button type="submit" name="do_reset" value="1" class="wx-btn wx-btn-danger" style="padding:4px 16px;font-size:12px" onclick="return confirm('⚠️ 确定要清理所选数据吗？此操作不可恢复！')">执行清理</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            <div class="row">
                 <div class="col-lg-6">
                     <div class="wx-card card-dark">
-                        <div class="card-header">使用说明</div>
+                        <div class="card-header">📢 公告与更新</div>
                         <div class="card-body">
-                            <ul style="margin:0;padding-left:18px;line-height:2;">
-                                <li>游戏前台地址：<a href="<?php echo BLOG_URL; ?>?plugin=wx_games&game=ddz" target="_blank"><?php echo BLOG_URL; ?>?plugin=wx_games&game=ddz</a></li>
-                                <li>积分数据存储在数据库中，确保数据持久化</li>
-                                <li>用户登录后游戏积分会自动保存到服务器</li>
-                                <li>游客模式下数据仅保存在本地浏览器</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-lg-6">
-                    <div class="wx-card card-dark">
-                        <div class="card-header">数据管理</div>
-                        <div class="card-body">
-                            <p>数据库中的玩家记录数：
-                                <?php
-                                try {
-                                    $cr = $db->query("SELECT COUNT(*) as total FROM `$table_scores` WHERE `is_ai` = 0");
-                                    $crow = $db->fetch_array($cr);
-                                    echo '<strong>' . (int)$crow['total'] . '</strong>';
-                                } catch (\Throwable $e) {
-                                    echo '0';
-                                }
-                                ?>
-                            </p>
-                            <a href="./plugin.php?plugin=wx_games&game=ddz&action=reset" class="wx-btn wx-btn-danger" onclick="return confirm('确定要清空所有积分数据吗？此操作不可恢复！')">清空所有积分数据</a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ========== 公告与更新内容编辑 ========== -->
-            <div class="row">
-                <div class="col-lg-6">
-                    <div class="wx-card card-dark">
-                        <div class="card-header">游戏公告</div>
-                        <div class="card-body">
-                            <form method="post" action="./plugin.php?plugin=wx_games&game=ddz">
-                                <input type="hidden" name="ddz_action" value="save_content">
                                 <div class="form-group">
-                                    <label>公告内容</label>
-                                    <textarea class="form-control" name="notice" rows="5" style="resize:vertical;"><?php echo htmlspecialchars($config['notice']); ?></textarea>
+                                    <label>游戏公告</label>
+                                    <textarea class="form-control" name="notice" rows="4" style="width:100%;resize:vertical;"><?php echo htmlspecialchars($config['notice']); ?></textarea>
                                     <small class="form-text text-muted">显示在游戏首页欢迎界面</small>
                                 </div>
-                                <button type="submit" class="wx-btn">保存公告</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-lg-6">
-                    <div class="wx-card card-dark">
-                        <div class="card-header">最近更新</div>
-                        <div class="card-body">
-                            <form method="post" action="./plugin.php?plugin=wx_games&game=ddz">
-                                <input type="hidden" name="ddz_action" value="save_content">
-                                <div class="form-group">
-                                    <label>更新内容（每行一条）</label>
-                                    <textarea class="form-control" name="recent_updates" rows="8" style="resize:vertical;font-family:monospace;"><?php echo htmlspecialchars($config['recent_updates']); ?></textarea>
-                                    <small class="form-text text-muted">每行一条更新记录，格式：版本号 - 内容</small>
+                                <div class="form-group" style="margin-bottom:8px">
+                                    <label>最近更新（每行一条）</label>
+                                    <textarea class="form-control" name="recent_updates" rows="6" style="width:100%;resize:vertical;"><?php echo htmlspecialchars($config['recent_updates']); ?></textarea>
+                                    <small class="form-text text-muted">格式：版本号 - 内容</small>
                                 </div>
-                                <button type="submit" class="wx-btn">保存更新</button>
-                            </form>
                         </div>
                     </div>
                 </div>
             </div>
+            <div style="text-align:center;margin-top:16px">
+                <button type="submit" class="wx-btn" style="padding:10px 48px;font-size:15px">💾 保存全部设置</button>
+            </div>
+            </form>
         </div>
 
         <!-- ========== AI玩家设置 ========== -->
@@ -607,15 +747,108 @@ function wx_ddz_admin_render() {
 
         <!-- ========== 积分管理 ========== -->
         <div class="tab-pane fade" id="admin" role="tabpanel">
-            <!-- 搜索 & 用户列表 -->
+            <div class="row">
+                <div class="col-lg-6">
+                    <!-- 积分查询与修改 -->
+                    <div class="wx-card card-dark mb-4">
+                        <div class="card-header">积分查询与修改</div>
+                        <div class="card-body">
+                            <form method="post" class="mb-3" style="max-width:400px">
+                                <input type="hidden" name="ddz_action" value="change_score">
+                                <div class="form-group">
+                                    <label>用户ID</label>
+                                    <input class="form-control" name="uid" type="number" min="1" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>积分变动（正=增加，负=扣除）</label>
+                                    <input class="form-control" name="score_change" type="number" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>原因</label>
+                                    <input class="form-control" name="reason" value="管理员手动调整">
+                                </div>
+                                <button type="submit" class="wx-btn">提交修改</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <!-- 积分变动日志 -->
+                    <div class="wx-card card-dark mb-4">
+                        <div class="card-header">积分变动日志（共 <?php echo $total_log_count; ?> 条）</div>
+                        <div class="card-body" style="padding:0;">
+                            <div style="overflow-x:auto;">
+                                <table class="table-admin">
+                                    <thead>
+                                        <tr>
+                                            <th>时间</th>
+                                            <th>用户</th>
+                                            <th>变动</th>
+                                            <th>变动前</th>
+                                            <th>变动后</th>
+                                            <th>原因</th>
+                                            <th>操作者</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="logTableBody">
+                                        <?php foreach ($logs as $log): ?>
+                                        <tr>
+                                            <td style="white-space:nowrap;"><?php echo date('Y-m-d H:i', $log['created_at']); ?></td>
+                                            <td><?php echo htmlspecialchars($log['nickname']); ?></td>
+                                            <td>
+                                                <?php if ($log['score_change'] > 0): ?>
+                                                <span class="win-text">+<?php echo $log['score_change']; ?></span>
+                                                <?php else: ?>
+                                                <span class="lose-text"><?php echo $log['score_change']; ?></span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td><?php echo $log['score_before']; ?></td>
+                                            <td><?php echo $log['score_after']; ?></td>
+                                            <td><?php echo htmlspecialchars($log['reason']); ?></td>
+                                            <td><?php echo htmlspecialchars($log['operator']); ?></td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                        <?php if (empty($logs)): ?>
+                                        <tr><td colspan="7" class="wx-empty">暂无日志记录</td></tr>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <?php if ($logTotalPages > 1): ?>
+                            <div class="pagination-admin" style="margin-top:0;" id="logPagination">
+                                <?php
+                                $logStart = max(1, $logPage - 2);
+                                $logEnd = min($logTotalPages, $logPage + 2);
+                                if ($logStart > 1) {
+                                    echo '<a href="javascript:void(0)" onclick="loadLogsPage(1)" class="pagi-link">1</a>';
+                                    if ($logStart > 2) echo '<span style="padding:6px 8px;color:#999;">...</span>';
+                                }
+                                for ($i = $logStart; $i <= $logEnd; $i++) {
+                                    $active = $i == $logPage ? 'active' : '';
+                                    echo '<a href="javascript:void(0)" onclick="loadLogsPage(' . $i . ')" class="pagi-link ' . $active . '">' . $i . '</a>';
+                                }
+                                if ($logEnd < $logTotalPages) {
+                                    if ($logEnd < $logTotalPages - 1) echo '<span style="padding:6px 8px;color:#999;">...</span>';
+                                    echo '<a href="javascript:void(0)" onclick="loadLogsPage(' . $logTotalPages . ')" class="pagi-link">' . $logTotalPages . '</a>';
+                                }
+                                ?>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 用户积分列表 -->
             <div class="wx-card card-dark">
                 <div class="card-header">用户积分列表</div>
                 <div class="card-body" style="padding:0;">
                     <div style="padding:16px 22px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
                         <span>共 <strong><?php echo $total_users_count; ?></strong> 条记录</span>
                         <form method="get" action="./plugin.php" class="form-inline" style="display:flex;gap:8px;">
-                            <input type="hidden" name="plugin" value="wx_ddz">
+                            <input type="hidden" name="plugin" value="wx_games">
                             <input type="hidden" name="tab" value="admin">
+                            <input type="hidden" name="game" value="ddz">
                             <input type="text" name="search" class="form-control" placeholder="搜索用户ID或昵称" value="<?php echo htmlspecialchars($search); ?>" style="width:200px;">
                             <button type="submit" class="wx-btn wx-btn-sm">搜索</button>
                         </form>
@@ -634,10 +867,10 @@ function wx_ddz_admin_render() {
                                     <th>操作</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="userTableBody">
                                 <?php foreach ($users as $index => $user): ?>
                                 <tr>
-                                    <td><?php echo ($page - 1) * 20 + $index + 1; ?></td>
+                                    <td><?php echo ($page - 1) * $pageSize + $index + 1; ?></td>
                                     <td><?php echo $user['uid']; ?></td>
                                     <td>
                                         <?php if ($user['avatar']): ?>
@@ -654,10 +887,10 @@ function wx_ddz_admin_render() {
                                     </td>
                                     <td><?php echo $user['best_score']; ?></td>
                                     <td>
-                                        <button type="button" class="wx-btn wx-btn-sm" onclick="$('#scoreModal<?php echo $user['uid']; ?>').modal('show')">修改积分</button>
-                                        <a href="./plugin.php?plugin=wx_games&game=ddz&ddz_action=delete&uid=<?php echo $user['uid']; ?>" class="wx-btn wx-btn-sm wx-btn-danger" onclick="return confirm('确定删除该用户的积分记录吗？')" style="margin-left:4px;">删除</a>
-                                        <button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#2d3436,#636e72);margin-left:4px;" onclick="showUserLog(<?php echo $user['uid']; ?>, '<?php echo htmlspecialchars($user['nickname'], ENT_QUOTES); ?>')">流水</button>
-                                        <button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#2d3436,#636e72);margin-left:4px;" onclick="showUserBackpack(<?php echo $user['uid']; ?>, '<?php echo htmlspecialchars($user['nickname'], ENT_QUOTES); ?>')">背包</button>
+                                        <button type="button" class="wx-btn wx-btn-sm btn-change-score" data-uid="<?php echo $user['uid']; ?>" data-score="<?php echo $user['score']; ?>" data-nick="<?php echo htmlspecialchars($user['nickname'], ENT_QUOTES); ?>">修改积分</button>
+                                        <button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#4facfe,#00f2fe);margin-left:4px;" onclick="showUserLog(<?php echo $user['uid']; ?>, '<?php echo htmlspecialchars($user['nickname'], ENT_QUOTES); ?>')">流水</button>
+                                        <button type="button" class="wx-btn wx-btn-sm wx-btn-danger" style="margin-left:4px;" onclick="deleteUser(<?php echo $user['uid']; ?>)">删除</button>
+                                        <button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb);margin-left:4px;" onclick="openBackpack(<?php echo $user['uid']; ?>, '<?php echo htmlspecialchars($user['nickname'], ENT_QUOTES); ?>')">背包</button>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -668,230 +901,31 @@ function wx_ddz_admin_render() {
                         </table>
                     </div>
                     <?php if ($totalPages > 1): ?>
-                    <div class="pagination-admin">
+                    <div class="pagination-admin" id="userPagination">
                         <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                        <a href="./plugin.php?plugin=wx_games&game=ddz&tab=admin&page=<?php echo $i; ?>&search=<?php echo urlencode($search); ?>" class="<?php echo $i == $page ? 'active' : ''; ?>"><?php echo $i; ?></a>
+                        <a href="javascript:void(0)" onclick="loadUsersPage(<?php echo $i; ?>)" class="<?php echo $i == $page ? 'active' : ''; ?>"><?php echo $i; ?></a>
                         <?php endfor; ?>
                     </div>
                     <?php endif; ?>
                 </div>
             </div>
-
-            <!-- 积分变动日志 -->
-            <div class="wx-card card-dark">
-                <div class="card-header">积分变动日志（最近50条）</div>
-                <div class="card-body" style="padding:0;">
-                    <div style="overflow-x:auto;">
-                        <table class="table-admin">
-                            <thead>
-                                <tr>
-                                    <th>时间</th>
-                                    <th>用户</th>
-                                    <th>变动</th>
-                                    <th>变动前</th>
-                                    <th>变动后</th>
-                                    <th>原因</th>
-                                    <th>操作者</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($logs as $log): ?>
-                                <tr>
-                                    <td style="white-space:nowrap;"><?php echo date('Y-m-d H:i', $log['created_at']); ?></td>
-                                    <td><?php echo htmlspecialchars($log['nickname']); ?></td>
-                                    <td>
-                                        <?php if ($log['score_change'] > 0): ?>
-                                        <span class="win-text">+<?php echo $log['score_change']; ?></span>
-                                        <?php else: ?>
-                                        <span class="lose-text"><?php echo $log['score_change']; ?></span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><?php echo $log['score_before']; ?></td>
-                                    <td><?php echo $log['score_after']; ?></td>
-                                    <td><?php echo htmlspecialchars($log['reason']); ?></td>
-                                    <td><?php echo htmlspecialchars($log['operator']); ?></td>
-                                </tr>
-                                <?php endforeach; ?>
-                                <?php if (empty($logs)): ?>
-                                <tr><td colspan="7" class="wx-empty">暂无日志记录</td></tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
         </div>
 
-        <!-- ========== 商城管理 ========== -->
-        <div class="tab-pane fade" id="shop" role="tabpanel">
-            <div class="wx-card card-dark">
-                <div class="card-header">商品列表</div>
-                <div class="card-body" style="padding:0;">
-                    <div style="padding:16px 22px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;">
-                        <span>共 <strong><?php echo count($shop_items); ?></strong> 件商品</span>
-                        <button type="button" class="wx-btn wx-btn-sm" onclick="$('#addShopModal').modal('show')">+ 添加商品</button>
-                    </div>
-                    <div style="overflow-x:auto;">
-                        <table class="table-admin">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>名称</th>
-                                    <th>类型</th>
-                                    <th>站点积分价</th>
-                                    <th>斗地主积分价</th>
-                                    <th>库存</th>
-                                    <th>限购</th>
-                                    <th>排序</th>
-                                    <th>状态</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if (empty($shop_items)): ?>
-                                <tr><td colspan="10" class="wx-empty"><span class="empty-icon">🛒</span>暂无商品，点击上方"添加商品"开始</td></tr>
-                                <?php else: ?>
-                                <?php foreach ($shop_items as $item): ?>
-                                <tr>
-                                    <td><?php echo (int)$item['id']; ?></td>
-                                    <td>
-                                        <?php if ($item['icon']): ?><img src="<?php echo htmlspecialchars($item['icon']); ?>" style="width:20px;height:20px;vertical-align:middle;margin-right:4px;border-radius:4px;"><?php endif; ?>
-                                        <?php echo htmlspecialchars($item['name']); ?>
-                                    </td>
-                                    <td><span class="badge-score" style="font-size:11px;"><?php 
-                                        $type_key = $item['item_type'];
-                                        $type_name = isset($item_types[$type_key]) ? $item_types[$type_key] : $type_key;
-                                        $type_icon = isset($item_type_icons[$type_key]['icon']) ? $item_type_icons[$type_key]['icon'] : '🎁';
-                                        echo $type_icon . ' ' . $type_name;
-                                    ?></span></td>
-                                    <td><?php echo (int)$item['price_emlog'] > 0 ? (int)$item['price_emlog'] : '-'; ?></td>
-                                    <td><?php echo (int)$item['price_ddz'] > 0 ? (int)$item['price_ddz'] : '-'; ?></td>
-                                    <td><?php echo (int)$item['stock'] === -1 ? '不限' : (int)$item['stock']; ?></td>
-                                    <td><?php echo (int)$item['max_per_user'] > 0 ? (int)$item['max_per_user'] : '不限'; ?></td>
-                                    <td><?php echo (int)$item['sort_order']; ?></td>
-                                    <td><?php echo (int)$item['status'] === 1 ? '<span style="color:#2ecc71;">上架</span>' : '<span style="color:#999;">下架</span>'; ?></td>
-                                    <td style="white-space:nowrap;">
-                                        <button type="button" class="wx-btn wx-btn-sm" onclick="editShopItem(<?php echo htmlspecialchars(json_encode($item)); ?>)">编辑</button>
-                                        <a href="./plugin.php?plugin=wx_games&game=ddz&ddz_action=delete_shop_item&item_id=<?php echo (int)$item['id']; ?>" class="wx-btn wx-btn-sm wx-btn-danger" onclick="return confirm('确定删除「<?php echo htmlspecialchars($item['name']); ?>」吗？')">删除</a>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
 
-        <!-- 背包消耗统计 -->
-        <div class="wx-card card-dark" style="margin-top:16px;">
-            <div class="card-header">道具消耗统计</div>
-            <div class="card-body" style="padding:0;">
-                <div style="overflow-x:auto;">
-                    <table class="table-admin">
-                        <thead>
-                            <tr>
-                                <th>商品</th>
-                                <th>购买人次</th>
-                                <th>总购买数</th>
-                                <th>已消耗</th>
-                                <th>剩余</th>
-                                <th>消耗率</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (empty($inventory_stats)): ?>
-                            <tr><td colspan="6" class="wx-empty"><span class="empty-icon">📦</span>暂无购买数据</td></tr>
-                            <?php else: ?>
-                            <?php foreach ($inventory_stats as $stat): ?>
-                            <?php
-                                $total = (int)$stat['total_bought'];
-                                $used = (int)$stat['total_used'];
-                                $remain = $total - $used;
-                                $rate = $total > 0 ? round($used / $total * 100) : 0;
-                            ?>
-                            <tr>
-                                <td>
-                                    <?php if ($stat['icon']): ?><img src="<?php echo htmlspecialchars($stat['icon']); ?>" style="width:18px;height:18px;vertical-align:middle;margin-right:4px;border-radius:3px;"><?php endif; ?>
-                                    <?php echo htmlspecialchars($stat['name']); ?>
-                                </td>
-                                <td><strong><?php echo (int)$stat['buyer_count']; ?></strong></td>
-                                <td><?php echo $total; ?></td>
-                                <td><?php echo $used; ?></td>
-                                <td><?php echo $remain; ?></td>
-                                <td>
-                                    <div style="display:flex;align-items:center;gap:6px;">
-                                        <div style="flex:1;height:6px;background:#eef0f5;border-radius:3px;overflow:hidden;min-width:60px;">
-                                            <div style="height:100%;width:<?php echo $rate; ?>%;background:linear-gradient(90deg,#2d3436,#636e72);border-radius:3px;"></div>
-                                        </div>
-                                        <span style="font-size:11px;color:#666;"><?php echo $rate; ?>%</span>
-                                    </div>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-                <?php echo render_pagination($stat_page, $stat_total_pages, 'stat_page'); ?>
-            </div>
-        </div>
-
-        <!-- 最近购买记录 -->
-        <div class="wx-card card-dark" style="margin-top:16px;">
-            <div class="card-header">最近购买记录</div>
-            <div class="card-body" style="padding:0;">
-                <div style="overflow-x:auto;">
-                    <table class="table-admin">
-                        <thead>
-                            <tr>
-                                <th>时间</th>
-                                <th>用户ID</th>
-                                <th>商品</th>
-                                <th>数量</th>
-                                <th>已使用</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (empty($purchase_history)): ?>
-                            <tr><td colspan="5" class="wx-empty"><span class="empty-icon">🕐</span>暂无购买记录</td></tr>
-                            <?php else: ?>
-                            <?php foreach ($purchase_history as $ph): ?>
-                            <tr>
-                                <td style="white-space:nowrap;"><?php echo date('Y-m-d H:i', (int)$ph['purchased_at']); ?></td>
-                                <td><?php echo (int)$ph['uid']; ?></td>
-                                <td>
-                                    <?php if ($ph['item_icon']): ?><img src="<?php echo htmlspecialchars($ph['item_icon']); ?>" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;border-radius:3px;"><?php endif; ?>
-                                    <?php echo htmlspecialchars($ph['item_name']); ?>
-                                </td>
-                                <td><?php echo (int)$ph['quantity']; ?></td>
-                                <td><?php echo (int)$ph['used']; ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-                <?php echo render_pagination($buy_page, $buy_total_pages, 'buy_page'); ?>
-            </div>
-        </div>
-        </div>
-    </div>
-<?php foreach ($users as $user): ?>
-<div class="modal fade" id="scoreModal<?php echo $user['uid']; ?>" tabindex="-1" role="dialog" aria-hidden="true">
+<div class="modal fade" id="scoreModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog" role="document">
         <div class="modal-content" style="border-radius:14px;border:none;box-shadow:0 10px 40px rgba(0,0,0,0.15);">
             <div class="modal-header" style="background:linear-gradient(135deg,#2d3436,#636e72);color:#fff;border-radius:14px 14px 0 0;border:none;">
-                <h5 class="modal-title" style="font-size:16px;">修改积分 - <?php echo htmlspecialchars($user['nickname']); ?></h5>
+                <h5 class="modal-title" style="font-size:16px;" id="scoreModalTitle">修改积分</h5>
                 <button type="button" class="close" data-dismiss="modal" style="color:#fff;opacity:0.8;">&times;</button>
             </div>
             <form method="post" action="./plugin.php?plugin=wx_games&game=ddz">
                 <input type="hidden" name="ddz_action" value="change_score">
-                <input type="hidden" name="uid" value="<?php echo $user['uid']; ?>">
+                <input type="hidden" name="uid" id="scoreModalUid">
                 <div class="modal-body" style="padding:24px;">
                     <div class="form-group">
                         <label>当前积分</label>
-                        <input type="text" class="form-control" value="<?php echo $user['score']; ?>" readonly style="background:#f8f9fe;">
+                        <input type="text" class="form-control" id="scoreModalCurrent" readonly style="background:#f8f9fe;">
                     </div>
                     <div class="form-group">
                         <label>积分变化（正数增加，负数减少）</label>
@@ -910,7 +944,6 @@ function wx_ddz_admin_render() {
         </div>
     </div>
 </div>
-<?php endforeach; ?>
 
 <!-- 添加商品弹窗 -->
 <div class="modal fade" id="addShopModal" tabindex="-1" role="dialog" aria-hidden="true">
@@ -1137,7 +1170,7 @@ function wx_ddz_admin_render() {
 </div>
 
 <!-- 用户背包管理弹窗 -->
-<div class="modal fade" id="userBackpackModal" tabindex="-1" role="dialog" aria-hidden="true">
+<div class="modal fade" id="userBackpackModal" tabindex="-1" role="dialog" aria-hidden="true" style="z-index:1060;">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content" style="border-radius:14px;border:none;box-shadow:0 10px 40px rgba(0,0,0,0.15);">
             <div class="modal-header" style="background:linear-gradient(135deg,#2d3436,#636e72);color:#fff;border-radius:14px 14px 0 0;border:none;">
@@ -1174,6 +1207,176 @@ function wx_ddz_admin_render() {
         </div>
     </div>
 </div>
+
+        <!-- ========== 商城管理 ========== -->
+        <div class="tab-pane fade" id="shop" role="tabpanel">
+            <div class="wx-card card-dark">
+                <div class="card-header">商品列表</div>
+                <div class="card-body" style="padding:0;">
+                    <div style="padding:16px 22px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                            <span>共 <strong><?php echo count($shop_items); ?></strong> 件商品</span>
+                            <select class="form-control" style="width:auto;display:inline-block;height:32px;font-size:13px;padding:2px 8px;" onchange="location.href='./plugin.php?plugin=wx_games&game=ddz&tab=shop&filter_type='+this.value">
+                                <option value="">全部类型</option>
+                                <?php foreach ($item_types as $tk => $tv): ?>
+                                <option value="<?php echo $tk; ?>" <?php echo $filter_type === $tk ? 'selected' : ''; ?>><?php echo $tv; ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <button type="button" class="wx-btn wx-btn-sm" onclick="$('#addShopModal').modal('show')">+ 添加商品</button>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="table-admin">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>名称</th>
+                                    <th>类型</th>
+                                    <th>站点积分价</th>
+                                    <th>斗地主积分价</th>
+                                    <th>库存</th>
+                                    <th>限购</th>
+                                    <th>排序</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($shop_items)): ?>
+                                <tr><td colspan="10" class="wx-empty"><span class="empty-icon">🛒</span>暂无商品，点击上方"添加商品"开始</td></tr>
+                                <?php else: ?>
+                                <?php foreach ($shop_items as $item): ?>
+                                <tr>
+                                    <td><?php echo (int)$item['id']; ?></td>
+                                    <td>
+                                        <?php 
+                                        $type_icon_name = isset($item_type_icons[$item['item_type']]['icon']) ? $item_type_icons[$item['item_type']]['icon'] : '🎁';
+                                        echo $type_icon_name;
+                                        ?>
+                                        <?php echo htmlspecialchars($item['name']); ?>
+                                    </td>
+                                    <td><span class="badge-score" style="font-size:11px;"><?php 
+                                        $type_key = $item['item_type'];
+                                        $type_name = isset($item_types[$type_key]) ? $item_types[$type_key] : $type_key;
+                                        $type_icon = isset($item_type_icons[$type_key]['icon']) ? $item_type_icons[$type_key]['icon'] : '🎁';
+                                        echo $type_icon . ' ' . $type_name;
+                                    ?></span></td>
+                                    <td><?php echo (int)$item['price_emlog'] > 0 ? (int)$item['price_emlog'] : '-'; ?></td>
+                                    <td><?php echo (int)$item['price_game'] > 0 ? (int)$item['price_game'] : '-'; ?></td>
+                                    <td><?php echo (int)$item['stock'] === -1 ? '不限' : (int)$item['stock']; ?></td>
+                                    <td><?php echo (int)$item['max_per_user'] > 0 ? (int)$item['max_per_user'] : '不限'; ?></td>
+                                    <td><?php echo (int)$item['sort_order']; ?></td>
+                                    <td><?php echo (int)$item['status'] === 1 ? '<span style="color:#2ecc71;">上架</span>' : '<span style="color:#999;">下架</span>'; ?></td>
+                                    <td style="white-space:nowrap;">
+                                        <button type="button" class="wx-btn wx-btn-sm" onclick="editShopItem(<?php echo htmlspecialchars(json_encode($item)); ?>)">编辑</button>
+                                        <a href="./plugin.php?plugin=wx_games&game=ddz&ddz_action=delete_shop_item&item_id=<?php echo (int)$item['id']; ?>" class="wx-btn wx-btn-sm wx-btn-danger" onclick="return confirm('确定删除「<?php echo htmlspecialchars($item['name']); ?>」吗？')">删除</a>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        <!-- 背包消耗统计 -->
+            <div class="row">
+        <div class="col-lg-6">
+        <div class="wx-card card-dark">
+            <div class="card-header">道具消耗统计</div>
+            <div class="card-body" style="padding:0;">
+                <div style="overflow-x:auto;">
+                    <table class="table-admin">
+                        <thead>
+                            <tr>
+                                <th>商品</th>
+                                <th>购买人次</th>
+                                <th>总购买数</th>
+                                <th>已消耗</th>
+                                <th>剩余</th>
+                                <th>消耗率</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($inventory_stats)): ?>
+                            <tr><td colspan="6" class="wx-empty"><span class="empty-icon">📦</span>暂无购买数据</td></tr>
+                            <?php else: ?>
+                            <?php foreach ($inventory_stats as $stat): ?>
+                            <?php
+                                $total = (int)$stat['total_bought'];
+                                $used = (int)$stat['total_used'];
+                                $remain = $total - $used;
+                                $rate = $total > 0 ? round($used / $total * 100) : 0;
+                            ?>
+                            <tr>
+                                <td>
+                                    <?php if ($stat['icon'] && (strpos($stat['icon'], 'http') === 0 || strpos($stat['icon'], '/') === 0)): ?><img src="<?php echo htmlspecialchars($stat['icon']); ?>" style="width:18px;height:18px;vertical-align:middle;margin-right:4px;border-radius:3px;" onerror="this.style.display='none'"><?php elseif ($stat['icon']): ?><span style="margin-right:4px;"><?php echo htmlspecialchars($stat['icon']); ?></span><?php endif; ?>
+                                    <?php echo htmlspecialchars($stat['name']); ?>
+                                </td>
+                                <td><strong><?php echo (int)$stat['buyer_count']; ?></strong></td>
+                                <td><?php echo $total; ?></td>
+                                <td><?php echo $used; ?></td>
+                                <td><?php echo $remain; ?></td>
+                                <td>
+                                    <div style="display:flex;align-items:center;gap:6px;">
+                                        <div style="flex:1;height:6px;background:#eef0f5;border-radius:3px;overflow:hidden;min-width:60px;">
+                                            <div style="height:100%;width:<?php echo $rate; ?>%;background:linear-gradient(90deg,#2d3436,#636e72);border-radius:3px;"></div>
+                                        </div>
+                                        <span style="font-size:11px;color:#666;"><?php echo $rate; ?>%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php echo render_pagination($stat_page, $stat_total_pages, 'stat_page'); ?>
+            </div>
+        </div>
+        </div>
+        <div class="col-lg-6">
+        <div class="wx-card card-dark">
+            <div class="card-header">最近购买记录</div>
+            <div class="card-body" style="padding:0;">
+                <div style="overflow-x:auto;">
+                    <table class="table-admin">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>用户ID</th>
+                                <th>商品</th>
+                                <th>数量</th>
+                                <th>已使用</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($purchase_history)): ?>
+                            <tr><td colspan="5" class="wx-empty"><span class="empty-icon">🕐</span>暂无购买记录</td></tr>
+                            <?php else: ?>
+                            <?php foreach ($purchase_history as $ph): ?>
+                            <tr>
+                                <td style="white-space:nowrap;"><?php echo date('Y-m-d H:i', (int)$ph['purchased_at']); ?></td>
+                                <td><?php echo (int)$ph['uid']; ?></td>
+                                <td>
+                                    <?php if ($ph['item_icon'] && (strpos($ph['item_icon'], 'http') === 0 || strpos($ph['item_icon'], '/') === 0)): ?><img src="<?php echo htmlspecialchars($ph['item_icon']); ?>" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;border-radius:3px;" onerror="this.style.display='none'"><?php elseif ($ph['item_icon']): ?><span style="margin-right:4px;"><?php echo htmlspecialchars($ph['item_icon']); ?></span><?php endif; ?>
+                                    <?php echo htmlspecialchars($ph['item_name']); ?>
+                                </td>
+                                <td><?php echo (int)$ph['quantity']; ?></td>
+                                <td><?php echo (int)$ph['used']; ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php echo render_pagination($buy_page, $buy_total_pages, 'buy_page'); ?>
+            </div>
+        </div>
+        </div>
+    </div>
+<!-- 修改积分弹窗（动态单例） -->
 
 <script>
 // AI 台词标签点击切换编辑面板
@@ -1220,16 +1423,21 @@ document.querySelectorAll('.quote-close-all').forEach(function(link) {
 });
 
 // AI数量变化
-document.getElementById('aiCount').addEventListener('change', function() {
-    var count = parseInt(this.value);
-    var rows = document.querySelectorAll('.ai-player-row');
-    rows.forEach(function(row, index) {
-        if (index < count) { row.style.display = 'block'; row.querySelectorAll('input,select,textarea').forEach(function(el) { el.disabled = false; }); }
-        else { row.style.display = 'none'; row.querySelectorAll('input,select,textarea').forEach(function(el) { el.disabled = true; }); }
+var aiCount = document.getElementById('aiCount');
+if (aiCount) {
+    aiCount.addEventListener('change', function() {
+        var count = parseInt(this.value);
+        var rows = document.querySelectorAll('.ai-player-row');
+        rows.forEach(function(row, index) {
+            if (index < count) { row.style.display = 'block'; row.querySelectorAll('input,select,textarea').forEach(function(el) { el.disabled = false; }); }
+            else { row.style.display = 'none'; row.querySelectorAll('input,select,textarea').forEach(function(el) { el.disabled = true; }); }
+        });
     });
-});
+}
 (function() {
-    var count = parseInt(document.getElementById('aiCount').value);
+    var aiCount = document.getElementById('aiCount');
+    if (!aiCount) return;
+    var count = parseInt(aiCount.value);
     document.querySelectorAll('.ai-player-row').forEach(function(row, index) {
         if (index >= count) { row.style.display = 'none'; row.querySelectorAll('input,select,textarea').forEach(function(el) { el.disabled = true; }); }
     });
@@ -1254,28 +1462,36 @@ document.addEventListener('DOMContentLoaded', function() {
     updateTypeHint('edit');
 });
 
-// 用户积分流水弹窗
+// ====== 修改积分弹窗 ======
+$(document).on('click', '.btn-change-score', function(e) {
+    var btn = this;
+    document.getElementById('scoreModalUid').value = $(btn).attr('data-uid');
+    document.getElementById('scoreModalCurrent').value = $(btn).attr('data-score');
+    var nick = $(btn).attr('data-nick');
+    document.getElementById('scoreModalTitle').textContent = '修改积分' + (nick ? ' - ' + nick : '');
+    $('#scoreModal').modal('show');
+});
+
+// ====== 流水弹窗 ======
 function showUserLog(uid, nickname) {
-    document.getElementById('userLogModalTitle').textContent = '📝 ' + nickname + ' 的积分流水';
+    document.getElementById('userLogModalTitle').textContent = (nickname || '用户') + ' 的积分流水';
     document.getElementById('userLogBody').innerHTML = '<tr><td colspan="6" class="wx-empty">加载中...</td></tr>';
     $('#userLogModal').modal('show');
-
     fetch('<?php echo BLOG_URL; ?>?plugin=wx_games&game=ddz&ddz_action=get_user_logs&uid=' + uid, { credentials: 'include' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.code === 0 && data.data && data.data.length > 0) {
                 var html = '';
                 data.data.forEach(function(item) {
-                    var sign = item.score_change >= 0 ? '+' : '';
-                    var color = item.score_change >= 0 ? '#2ecc71' : '#e74c3c';
-                    html += '<tr>' +
-                        '<td style="white-space:nowrap;">' + item.time + '</td>' +
-                        '<td><span style="color:' + color + ';font-weight:600;">' + sign + item.score_change + '</span></td>' +
-                        '<td>' + item.score_before + '</td>' +
-                        '<td>' + item.score_after + '</td>' +
-                        '<td>' + (item.reason || '-') + '</td>' +
-                        '<td>' + (item.operator || '-') + '</td>' +
-                        '</tr>';
+                    var time = item.created_at;
+                    if (typeof time === 'number' || /^\d+$/.test(String(time))) {
+                        var dt = new Date(parseInt(time) * 1000);
+                        time = dt.getFullYear() + '-' + ('0'+(dt.getMonth()+1)).slice(-2) + '-' + ('0'+dt.getDate()).slice(-2) + ' ' + ('0'+dt.getHours()).slice(-2) + ':' + ('0'+dt.getMinutes()).slice(-2);
+                    }
+                    var change = parseInt(item.score_change);
+                    var sign = change >= 0 ? '+' : '';
+                    var color = change >= 0 ? '#2ecc71' : '#e74c3c';
+                    html += '<tr><td style="white-space:nowrap;">' + time + '</td><td><span style="color:' + color + ';font-weight:600;">' + sign + change + '</span></td><td>' + (item.score_before || 0) + '</td><td>' + (item.score_after || 0) + '</td><td>' + (item.reason || '') + '</td><td>' + (item.operator || '') + '</td></tr>';
                 });
                 document.getElementById('userLogBody').innerHTML = html;
             } else {
@@ -1287,20 +1503,133 @@ function showUserLog(uid, nickname) {
         });
 }
 
-// ==================== 用户背包管理 ====================
+// ====== 删除玩家 ======
+function deleteUser(uid) {
+    if (!confirm('⚠️ 确定要删除该玩家的积分、游戏记录和流水吗？此操作不可撤销！')) return;
+    if (!confirm('再次确认：所有数据将被永久删除！')) return;
+    var formData = new FormData();
+    formData.append('ddz_action', 'delete_user');
+    formData.append('uid', uid);
+    fetch('?plugin=wx_games&game=ddz', { method: 'POST', body: new URLSearchParams(formData) })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.code === 0) { alert('删除成功'); location.reload(); }
+            else { alert('删除失败: ' + d.message); }
+        });
+}
+
+// ====== 背包管理 ======
 var _backpackUid = 0;
-var _backpackNickname = '';
 
-function showUserBackpack(uid, nickname) {
+function openBackpack(uid, nickname) {
     _backpackUid = uid;
-    _backpackNickname = nickname;
-    document.getElementById('backpackModalTitle').textContent = '🎒 ' + nickname + ' 的背包';
-    $('#userBackpackModal').modal('show');
-
-    // 加载商品列表到下拉框
-    loadShopItemsDropdown();
-    // 加载用户背包
+    var titleEl = document.getElementById('backpackModalTitle');
+    if (titleEl) titleEl.textContent = '🎒 ' + (nickname || '用户') + ' 的背包';
     loadUserBackpack(uid);
+    loadShopItemsDropdown();
+    $('#userBackpackModal').modal('show');
+}
+
+// ====== 用户列表分页 AJAX ======
+function loadUsersPage(page) {
+    var search = document.getElementById('logSearchInput') ? document.getElementById('logSearchInput').value : '';
+    var tbody = document.getElementById('userTableBody');
+    if (!tbody) { return; }
+    tbody.innerHTML = '<tr><td colspan="8" class="wx-empty">加载中...</td></tr>';
+    fetch('?plugin=wx_games&game=ddz&ddz_action=get_users_page&page=' + page + '&search=' + encodeURIComponent(search))
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.code !== 0) { tbody.innerHTML = '<tr><td colspan="8" class="wx-empty">加载失败</td></tr>'; return; }
+        if (!d.data || d.data.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="wx-empty">暂无数据</td></tr>'; return; }
+        var html = '';
+        d.data.forEach(function(u, idx) {
+            var safeName = escapeHtml(u.nickname);
+            html += '<tr>'
+                + '<td>' + ((d.currentPage - 1) * 10 + idx + 1) + '</td>'
+                + '<td>' + u.uid + '</td>'
+                + '<td>' + (u.avatar ? '<img src="' + u.avatar + '" style="width:24px;height:24px;border-radius:50%;vertical-align:middle;margin-right:4px;">' : '') + safeName + '</td>'
+                + '<td><span class="badge-score">' + u.score + '</span></td>'
+                + '<td>' + u.total_games + '</td>'
+                + '<td><span class="win-text">' + u.wins + '胜</span> / <span class="lose-text">' + u.losses + '负</span> / <span style="color:#999;">' + u.draws + '平</span></td>'
+                + '<td>' + u.best_score + '</td>'
+                + '<td>'
+                + '<button type="button" class="wx-btn wx-btn-sm btn-change-score" data-uid="' + u.uid + '" data-score="' + u.score + '">修改积分</button>'
+                + '<button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#4facfe,#00f2fe);margin-left:4px;" onclick="showUserLog(' + u.uid + ')">流水</button>'
+                + '<button type="button" class="wx-btn wx-btn-sm wx-btn-danger" style="margin-left:4px;" onclick="deleteUser(' + u.uid + ')">删除</button>'
+                + '<button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb);margin-left:4px;" onclick="openBackpack(' + u.uid + ')">背包</button>'
+                + '</td></tr>';
+        });
+        tbody.innerHTML = html;
+        updateUserPagination(d.currentPage, d.totalPages);
+    })
+    .catch(function() {
+        tbody.innerHTML = '<tr><td colspan="8" class="wx-empty">网络错误</td></tr>';
+    });
+}
+function updateUserPagination(currentPage, totalPages) {
+    var container = document.getElementById('userPagination');
+    if (!container) return;
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+    var html = '';
+    for (var i = 1; i <= totalPages; i++) {
+        html += '<a href="javascript:void(0)" onclick="loadUsersPage(' + i + ')" class="' + (i == currentPage ? 'active' : '') + '">' + i + '</a>';
+    }
+    container.innerHTML = html;
+}
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+}
+
+// ====== 日志分页 AJAX ======
+function loadLogsPage(page) {
+    var search = document.getElementById('logSearchInput') ? document.getElementById('logSearchInput').value : '';
+    var tbody = document.getElementById('logTableBody');
+    if (!tbody) { console.log('logTableBody not found'); return; }
+    tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载中...</td></tr>';
+    fetch('?plugin=wx_games&game=ddz&ddz_action=get_logs_page&log_page=' + page + '&search=' + encodeURIComponent(search), { credentials: 'include' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.code !== 0) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载失败</td></tr>'; return; }
+        if (!d.data || d.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">暂无日志记录</td></tr>';
+        } else {
+            var html = '';
+            d.data.forEach(function(log) {
+                var time = log.created_at;
+                if (typeof time === 'number' || /^\d+$/.test(String(time))) {
+                    var dt = new Date(parseInt(time) * 1000);
+                    time = dt.getFullYear() + '-' + ('0'+(dt.getMonth()+1)).slice(-2) + '-' + ('0'+dt.getDate()).slice(-2) + ' ' + ('0'+dt.getHours()).slice(-2) + ':' + ('0'+dt.getMinutes()).slice(-2);
+                }
+                var change = parseInt(log.score_change);
+                var changeHtml = change > 0 ? '<span class="win-text">+' + change + '</span>' : '<span class="lose-text">' + change + '</span>';
+                html += '<tr><td style="white-space:nowrap;">' + time + '</td><td>' + (log.nickname || '') + '</td><td>' + changeHtml + '</td><td>' + (log.score_before || 0) + '</td><td>' + (log.score_after || 0) + '</td><td>' + (log.reason || '') + '</td><td>' + (log.operator || '') + '</td></tr>';
+            });
+            tbody.innerHTML = html;
+        }
+        updateLogPagination(d.currentPage || page, d.totalPages || 1);
+    })
+    .catch(function() { if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">网络错误</td></tr>'; });
+}
+function updateLogPagination(currentPage, totalPages) {
+    var container = document.getElementById('logPagination');
+    if (!container) return;
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+    var html = '';
+    var start = Math.max(1, currentPage - 2);
+    var end = Math.min(totalPages, currentPage + 2);
+    if (start > 1) {
+        html += '<a href="javascript:void(0)" onclick="loadLogsPage(1)" class="pagi-link">1</a>';
+        if (start > 2) html += '<span style="padding:6px 8px;color:#999;">...</span>';
+    }
+    for (var i = start; i <= end; i++) {
+        html += '<a href="javascript:void(0)" onclick="loadLogsPage(' + i + ')" class="pagi-link' + (i == currentPage ? ' active' : '') + '">' + i + '</a>';
+    }
+    if (end < totalPages) {
+        if (end < totalPages - 1) html += '<span style="padding:6px 8px;color:#999;">...</span>';
+        html += '<a href="javascript:void(0)" onclick="loadLogsPage(' + totalPages + ')" class="pagi-link">' + totalPages + '</a>';
+    }
+    container.innerHTML = html;
 }
 
 function loadShopItemsDropdown() {
@@ -1427,7 +1756,7 @@ function editShopItem(item) {
     document.getElementById('edit_icon').value = item.icon || '';
     document.getElementById('edit_effect_data').value = item.effect_data || '{}';
     document.getElementById('edit_price_emlog').value = item.price_emlog || 0;
-    document.getElementById('edit_price_ddz').value = item.price_ddz || 0;
+    document.getElementById('edit_price_ddz').value = item.price_game || 0;
     document.getElementById('edit_sort_order').value = item.sort_order || 0;
     document.getElementById('edit_stock').value = item.stock || -1;
     document.getElementById('edit_max_per_user').value = item.max_per_user || 0;

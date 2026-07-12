@@ -51,7 +51,7 @@ function wx_mojang_route_ajax($action) {
             $avatar      = isset($_POST['avatar'])   ? addslashes(trim($_POST['avatar']))    : '';
             $score_change = isset($_POST['score_change']) ? intval($_POST['score_change']) : 0;
             $result      = isset($_POST['result'])   ? addslashes(trim($_POST['result']))   : 'draw';
-            $ai_uid      = abs(crc32($nickname)) % 1000000 + 1000000;
+            $ai_uid      = wx_games_get_ai_uid($nickname);
             $save_result = wx_mojang_save_score($ai_uid, $nickname, $avatar, $score_change, $result, 1);
             if ($save_result['success']) { wx_mojang_ok(['msg' => 'AI分数已保存']); }
             else { wx_mojang_error($save_result['msg']); }
@@ -80,21 +80,23 @@ function wx_mojang_handle_signal($signal) {
 
     if ($signal === 'start') {
         $table = DB_PREFIX . 'wx_mojang_games';
-        $db->query("INSERT INTO `{$table}` (uid, result, status) VALUES ({$suid}, 'pending', 1)");
+        // 先关闭所有历史未完成记录
+        $db->query("UPDATE `{$table}` SET status=0, finished_at=NOW() WHERE uid={$suid} AND status=1");
+        $db->query("INSERT INTO `{$table}` (uid, result, status) VALUES ('mj', {$suid}, 'pending', 1)");
     } elseif ($signal === 'end') {
         $table = DB_PREFIX . 'wx_mojang_games';
         $token = isset($_GET['token']) ? addslashes(trim($_GET['token'])) : '';
         if ($token) {
-            $db->query("UPDATE `{$table}` SET status=0, result='draw', finished_at=NOW() WHERE uid={$suid} AND game_token='{$token}' AND status=1 LIMIT 1");
+            $db->query("UPDATE `{$table}` SET status=0, result='draw', finished_at=NOW() WHERE uid={$suid} AND game_token='{$token}' AND status=1");
         } else {
-            $db->query("UPDATE `{$table}` SET status=0, result='draw', finished_at=NOW() WHERE uid={$suid} AND status=1 LIMIT 1");
+            $db->query("UPDATE `{$table}` SET status=0, result='draw', finished_at=NOW() WHERE uid={$suid} AND status=1");
         }
     } elseif ($signal === 'penalty') {
         $penalty_points = isset($_GET['points']) ? intval($_GET['points']) : 100;
         $penalty_points = -abs($penalty_points);
         wx_mojang_apply_penalty($suid, $penalty_points);
         $table = DB_PREFIX . 'wx_mojang_games';
-        $db->query("UPDATE `{$table}` SET result='lose', score_change={$penalty_points}, status=0, finished_at=NOW() WHERE uid={$suid} AND status=1 ORDER BY id DESC LIMIT 1");
+        $db->query("UPDATE `{$table}` SET result='lose', score_change={$penalty_points}, status=0, finished_at=NOW() WHERE uid={$suid} AND status=1");
     }
 }
 
@@ -121,7 +123,7 @@ function wx_mojang_get_config() {
         $defaults = [
             'title'              => 'H5 国标麻将',
             'guest_play'         => '1',
-            'ai_names'           => '电脑玩家1,电脑玩家2,电脑玩家3',
+            'ai_names'           => '全宝蓝,李居丽,朴素妍,咸恩静,朴孝敏,朴智妍',
             'max_entries'        => 50,
             'penalty_multiplier' => 2,
             'base_score'         => 100,
@@ -154,19 +156,24 @@ function wx_mojang_get_config() {
 function wx_mojang_get_ai_players() {
     static $ai_players = null;
     if ($ai_players === null) {
+        $avatar_files = ['boram.jpg', 'qri.jpg', 'soyeon.jpg', 'eunjung.jpg', 'hyomin.jpg', 'jiyeon.jpg'];
         try {
             $storage = Storage::getInstance('wx_mojang');
             $saved = $storage->getValue('ai_players');
-            if (is_array($saved) && !empty($saved)) { $ai_players = $saved; }
+            if (is_array($saved) && !empty($saved)) {
+                // 兼容旧版关联数组转为索引数组
+                $ai_players = array_values($saved);
+            }
         } catch (Throwable $e) {}
         if ($ai_players === null) {
-            $config = wx_mojang_get_config();
-            $names = isset($config['ai_names']) ? explode(',', $config['ai_names']) : ['电脑玩家1', '电脑玩家2', '电脑玩家3'];
+            $names = ['全宝蓝', '李居丽', '朴素妍', '咸恩静', '朴孝敏', '朴智妍'];
             $ai_players = [];
             foreach ($names as $i => $name) {
-                $name = trim($name);
-                if (empty($name)) $name = '电脑玩家' . ($i + 1);
-                $ai_players['player' . ($i + 1)] = ['name' => $name, 'avatar' => '', 'quotes' => ['good' => [], 'bad' => [], 'win' => [], 'lose' => []]];
+                $ai_players[] = [
+                    'name'   => $name,
+                    'avatar' => $avatar_files[$i % count($avatar_files)],
+                    'quotes' => ['good' => [], 'bad' => [], 'win' => [], 'lose' => []],
+                ];
             }
         }
         foreach ($ai_players as &$player) {
@@ -209,8 +216,8 @@ function wx_mojang_resolve_nickname($uid) {
 function wx_mojang_get_user_score($uid, $is_ai = 0) {
     try {
         $db = Database::getInstance();
-        $table = DB_PREFIX . 'wx_mojang_scores';
-        $row = $db->once_fetch_array("SELECT * FROM `" . $table . "` WHERE `uid` = " . intval($uid) . " AND `is_ai` = " . intval($is_ai) . " LIMIT 1");
+        $table = DB_PREFIX . 'wx_games_scores';
+        $row = $db->once_fetch_array("SELECT * FROM `" . $table . "` WHERE `game` = 'mj' AND `uid` = " . intval($uid) . " AND `is_ai` = " . intval($is_ai) . " LIMIT 1");
         if ($row) {
             return [
                 'id'             => (int)$row['id'],
@@ -237,10 +244,10 @@ function wx_mojang_get_user_score($uid, $is_ai = 0) {
 function wx_mojang_get_leaderboard($limit = 20, $include_ai = true) {
     try {
         $db = Database::getInstance();
-        $table = DB_PREFIX . 'wx_mojang_scores';
-        $table_inv = DB_PREFIX . 'wx_mojang_user_items';
-        $table_items = DB_PREFIX . 'wx_mojang_shop_items';
-        $where_sub = $include_ai ? '' : 'WHERE `is_ai` = 0';
+        $table = DB_PREFIX . 'wx_games_scores';
+        $table_inv = DB_PREFIX . 'wx_games_user_items';
+        $table_items = DB_PREFIX . 'wx_games_shop_items';
+        $where_sub = $include_ai ? "WHERE `game` = 'mj'" : "WHERE `game` = 'mj' AND `is_ai` = 0";
         $where_ai_check = $include_ai ? '' : ' AND sc.`is_ai` = 0';
         $result = $db->query("
             SELECT sc.*, si.`item_type`, si.`effect_data`
@@ -285,8 +292,8 @@ function wx_mojang_get_leaderboard($limit = 20, $include_ai = true) {
 function wx_mojang_save_score($uid, $nickname, $avatar, $score_change, $result, $is_ai = 0) {
     try {
         $db = Database::getInstance();
-        $table = DB_PREFIX . 'wx_mojang_scores';
-        $table_logs = DB_PREFIX . 'wx_mojang_logs';
+        $table = DB_PREFIX . 'wx_games_scores';
+        $table_logs = DB_PREFIX . 'wx_games_logs';
         $table_games = DB_PREFIX . 'wx_mojang_games';
         $uid = intval($uid);
         $score_change = intval($score_change);
@@ -294,13 +301,12 @@ function wx_mojang_save_score($uid, $nickname, $avatar, $score_change, $result, 
         $nickname = $db->escape_string(trim($nickname));
         $avatar = $db->escape_string(trim($avatar));
         $result = ($result === 'win' || $result === 'lose') ? $result : 'draw';
-        $existing = $db->once_fetch_array("SELECT * FROM `" . $table . "` WHERE `uid` = $uid AND `is_ai` = $is_ai LIMIT 1");
+        $existing = $db->once_fetch_array("SELECT * FROM `" . $table . "` WHERE `game` = 'mj' AND `uid` = $uid AND `is_ai` = $is_ai LIMIT 1");
         if ($is_ai == 0) {
             $db->query("UPDATE `" . $table_games . "` SET
                 `status` = 0, `finished_at` = NOW(),
                 `result` = '" . $result . "', `score_change` = $score_change
-                WHERE `uid` = $uid AND `status` = 1
-                ORDER BY `id` DESC LIMIT 1");
+                WHERE `uid` = $uid AND `status` = 1");
         }
         $result_label = $result === 'win' ? '胜' : ($result === 'lose' ? '负' : '平');
         $reason = '游戏结算（' . $result_label . '）';
@@ -317,11 +323,11 @@ function wx_mojang_save_score($uid, $nickname, $avatar, $score_change, $result, 
                 `wins` = $wins, `losses` = $losses, `draws` = $draws,
                 `best_score` = $best_score";
             if ($is_ai) { $query .= ", `nickname` = '" . $nickname . "', `avatar` = '" . $avatar . "'"; }
-            $query .= " WHERE `id` = " . intval($existing['id']);
+            $query .= " WHERE `game` = 'mj' AND `id` = " . intval($existing['id']);
             $db->query($query);
             $db->query("INSERT INTO `" . $table_logs . "`
-                (`uid`, `score_change`, `score_before`, `score_after`, `reason`, `operator`)
-                VALUES ($uid, $score_change, $score_before, $new_score, '$reason', 'system')");
+                (`game`, `uid`, `score_change`, `score_before`, `score_after`, `reason`, `operator`)
+                VALUES ('mj', $uid, $score_change, $score_before, $new_score, '$reason', 'system')");
             return ['success' => true, 'msg' => '保存成功', 'score' => $new_score];
         } else {
             $score_before = 0;
@@ -332,11 +338,11 @@ function wx_mojang_save_score($uid, $nickname, $avatar, $score_change, $result, 
             $_nick = $is_ai ? "'" . $nickname . "'" : "''";
             $_avat = $is_ai ? "'" . $avatar . "'" : "''";
             $db->query("INSERT INTO `" . $table . "`
-                (`uid`, `nickname`, `avatar`, `score`, `total_games`, `wins`, `losses`, `draws`, `best_score`, `is_ai`)
-                VALUES ($uid, $_nick, $_avat, $score_change, 1, $wins, $losses, $draws, $best_score, $is_ai)");
+                (`game`, `uid`, `nickname`, `avatar`, `score`, `total_games`, `wins`, `losses`, `draws`, `best_score`, `is_ai`)
+                VALUES ('mj', $uid, $_nick, $_avat, $score_change, 1, $wins, $losses, $draws, $best_score, $is_ai)");
             $db->query("INSERT INTO `" . $table_logs . "`
-                (`uid`, `score_change`, `score_before`, `score_after`, `reason`, `operator`)
-                VALUES ($uid, $score_change, $score_before, $score_change, '$reason', 'system')");
+                (`game`, `uid`, `score_change`, `score_before`, `score_after`, `reason`, `operator`)
+                VALUES ('mj', $uid, $score_change, $score_before, $score_change, '$reason', 'system')");
             return ['success' => true, 'msg' => '保存成功', 'score' => $score_change];
         }
     } catch (Throwable $e) {
@@ -347,28 +353,28 @@ function wx_mojang_save_score($uid, $nickname, $avatar, $score_change, $result, 
 function wx_mojang_apply_penalty($uid, $penalty_score = null) {
     try {
         $db = Database::getInstance();
-        $table = DB_PREFIX . 'wx_mojang_scores';
-        $table_logs = DB_PREFIX . 'wx_mojang_logs';
+        $table = DB_PREFIX . 'wx_games_scores';
+        $table_logs = DB_PREFIX . 'wx_games_logs';
         $uid = intval($uid);
         if ($penalty_score === null) {
             $cfg = wx_mojang_get_config();
             $penalty_score = -abs((int)$cfg['base_score'] * $cfg['penalty_multiplier']);
         } else { $penalty_score = -abs(intval($penalty_score)); }
-        $existing = $db->once_fetch_array("SELECT * FROM `" . $table . "` WHERE `uid` = $uid AND `is_ai` = 0 LIMIT 1");
+        $existing = $db->once_fetch_array("SELECT * FROM `" . $table . "` WHERE `game` = 'mj' AND `uid` = $uid AND `is_ai` = 0 LIMIT 1");
         if ($existing) {
             $score_before = (int)$existing['score'];
             $new_score = $score_before + $penalty_score;
-            $db->query("UPDATE `" . $table . "` SET `score` = $new_score WHERE `id` = " . intval($existing['id']));
+            $db->query("UPDATE `" . $table . "` SET `score` = $new_score WHERE `game` = 'mj' AND `id` = " . intval($existing['id']));
         } else {
             $score_before = 0;
             $new_score = $penalty_score;
             $db->query("INSERT INTO `" . $table . "`
-                (`uid`, `nickname`, `avatar`, `score`, `total_games`, `wins`, `losses`, `draws`, `best_score`, `is_ai`)
-                VALUES ($uid, '', '', $penalty_score, 1, 0, 1, 0, $penalty_score, 0)");
+                (`game`, `uid`, `nickname`, `avatar`, `score`, `total_games`, `wins`, `losses`, `draws`, `best_score`, `is_ai`)
+                VALUES ('mj', $uid, '', '', $penalty_score, 1, 0, 1, 0, $penalty_score, 0)");
         }
         $db->query("INSERT INTO `" . $table_logs . "`
-            (`uid`, `score_change`, `score_before`, `score_after`, `reason`, `operator`)
-            VALUES ($uid, $penalty_score, $score_before, $new_score, '逃跑惩罚（超时未完成）', 'system')");
+            (`game`, `uid`, `score_change`, `score_before`, `score_after`, `reason`, `operator`)
+            VALUES ('mj', $uid, $penalty_score, $score_before, $new_score, '逃跑惩罚（超时未完成）', 'system')");
         return $new_score;
     } catch (Throwable $e) { return 0; }
 }
@@ -376,20 +382,20 @@ function wx_mojang_apply_penalty($uid, $penalty_score = null) {
 function wx_mojang_admin_change_score($uid, $score_change, $reason = '', $operator = '') {
     try {
         $db = Database::getInstance();
-        $table_scores = DB_PREFIX . 'wx_mojang_scores';
-        $table_logs   = DB_PREFIX . 'wx_mojang_logs';
+        $table_scores = DB_PREFIX . 'wx_games_scores';
+        $table_logs   = DB_PREFIX . 'wx_games_logs';
         $uid = intval($uid);
         $score_change = intval($score_change);
-        $row = $db->once_fetch_array("SELECT * FROM `" . $table_scores . "` WHERE `uid` = $uid AND `is_ai` = 0 LIMIT 1");
+        $row = $db->once_fetch_array("SELECT * FROM `" . $table_scores . "` WHERE `game` = 'mj' AND `uid` = $uid AND `is_ai` = 0 LIMIT 1");
         if (!$row) return false;
         $score_before = (int)$row['score'];
         $score_after  = $score_before + $score_change;
         $reason_esc   = $db->escape_string($reason);
         $operator_esc = $db->escape_string($operator);
-        $db->query("UPDATE `" . $table_scores . "` SET `score` = $score_after WHERE `id` = " . intval($row['id']));
+        $db->query("UPDATE `" . $table_scores . "` SET `score` = $score_after WHERE `game` = 'mj' AND `id` = " . intval($row['id']));
         $db->query("INSERT INTO `" . $table_logs . "`
-            (`uid`, `score_change`, `score_before`, `score_after`, `reason`, `operator`)
-            VALUES ($uid, $score_change, $score_before, $score_after, '$reason_esc', '$operator_esc')");
+            (`game`, `uid`, `score_change`, `score_before`, `score_after`, `reason`, `operator`)
+            VALUES ('mj', $uid, $score_change, $score_before, $score_after, '$reason_esc', '$operator_esc')");
         return true;
     } catch (Throwable $e) { return false; }
 }
@@ -443,8 +449,8 @@ function wx_mojang_api_get_my_rank($uid) {
     }
     try {
         $db = Database::getInstance();
-        $table = DB_PREFIX . 'wx_mojang_scores';
-        $rank_row = $db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `" . $table . "` WHERE `is_ai` = 0 AND `score` > " . intval($data['score']));
+        $table = DB_PREFIX . 'wx_games_scores';
+        $rank_row = $db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `" . $table . "` WHERE `game` = 'mj' AND `is_ai` = 0 AND `score` > " . intval($data['score']));
         $data['rank'] = ($rank_row ? (int)$rank_row['cnt'] : 0) + 1;
     } catch (Throwable $e) { $data['rank'] = 0; }
     wx_mojang_ok($data);
@@ -454,8 +460,8 @@ function wx_mojang_api_get_user_logs($uid) {
     $target_uid = isset($_GET['uid']) ? intval($_GET['uid']) : 0;
     if ($target_uid <= 0) { wx_mojang_error('无效的用户ID'); }
     $db = Database::getInstance();
-    $table_logs = DB_PREFIX . 'wx_mojang_logs';
-    $result = $db->query("SELECT * FROM `" . $table_logs . "` WHERE `uid` = $target_uid ORDER BY `created` DESC LIMIT 50");
+    $table_logs = DB_PREFIX . 'wx_games_logs';
+    $result = $db->query("SELECT * FROM `" . $table_logs . "` WHERE `game` = 'mj' AND `uid` = $target_uid ORDER BY `created_at` DESC LIMIT 50");
     $log_entries = [];
     while ($row = $db->fetch_array($result)) {
         $log_entries[] = [
@@ -464,7 +470,7 @@ function wx_mojang_api_get_user_logs($uid) {
             'score_after'   => (int)$row['score_after'],
             'reason'        => $row['reason'],
             'operator'      => $row['operator'],
-            'time'          => $row['created'],
+            'time'          => date('Y-m-d H:i', (int)$row['created_at']),
         ];
     }
     wx_mojang_ok($log_entries);
@@ -498,7 +504,7 @@ function wx_mojang_api_start_game($uid) {
     $table = DB_PREFIX . 'wx_mojang_games';
     $db->query("UPDATE `" . $table . "` SET `status` = 0, `finished_at` = NOW(), `result` = 'draw', `score_change` = 0 WHERE `uid` = $uid AND `status` = 1");
     $token = bin2hex(random_bytes(16));
-    $db->query("INSERT INTO `" . $table . "` (`uid`, `result`, `game_token`, `status`) VALUES ($uid, 'pending', '$token', 1)");
+    $db->query("INSERT INTO `" . $table . "` (`game`, `uid`, `result`, `game_token`, `status`) VALUES ('mj', $uid, 'pending', '$token', 1)");
     $game_id = $db->insert_id();
     wx_mojang_ok(['game_id' => $game_id, 'game_token' => $token, 'msg' => '游戏开始']);
 }
@@ -520,7 +526,7 @@ function wx_mojang_api_complete_game($uid, $userData) {
     $db->query("UPDATE `" . $table . "` SET
         `status` = 0, `finished_at` = NOW(),
         `result` = '" . $result . "', `score_change` = $score_change
-        WHERE `uid` = $uid AND `status` = 1 ORDER BY `id` DESC LIMIT 1");
+        WHERE `uid` = $uid AND `status` = 1");
     $fan_count   = isset($_POST['fan_count'])   ? intval($_POST['fan_count'])   : 0;
     $fan_type    = isset($_POST['fan_type'])     ? addslashes(trim($_POST['fan_type']))     : '';
     $win_type    = isset($_POST['win_type'])     ? addslashes(trim($_POST['win_type']))     : '';
@@ -538,8 +544,8 @@ function wx_mojang_api_complete_game($uid, $userData) {
         `hand_tiles` = '" . $hand_tiles . "', `final_hand` = '" . $final_hand . "',
         `win_tile` = '" . $win_tile . "', `status` = 0, `finished_at` = NOW()
         WHERE `id` = $game_id AND `uid` = $uid AND `game_token` = '" . $token . "' AND `status` = 1");
-    $score_table = DB_PREFIX . 'wx_mojang_scores';
-    $score_row = $db->once_fetch_array("SELECT * FROM `" . $score_table . "` WHERE `uid` = $uid AND `is_ai` = 0 LIMIT 1");
+    $score_table = DB_PREFIX . 'wx_games_scores';
+    $score_row = $db->once_fetch_array("SELECT * FROM `" . $score_table . "` WHERE `game` = 'mj' AND `uid` = $uid AND `is_ai` = 0 LIMIT 1");
     if ($score_row) {
         $new_score   = (int)$score_row['score'] + $score_change;
         $new_wins    = (int)$score_row['wins']    + ($result === 'win'  ? 1 : 0);
@@ -565,8 +571,8 @@ function wx_mojang_api_complete_game($uid, $userData) {
         $discard_win   = ($result === 'win' && $win_type === 'discard')   ? 1 : 0;
         $big_fan_win   = ($result === 'win' && $fan_count >= 6) ? 1 : 0;
         $db->query("INSERT INTO `" . $score_table . "`
-            (`uid`, `nickname`, `avatar`, `score`, `total_games`, `wins`, `losses`, `draws`, `self_draw_wins`, `discard_wins`, `big_fan_wins`, `best_score`, `max_fan`, `is_ai`)
-            VALUES ($uid, '', '', $score_change, 1, $wins, $losses, $draws, $self_draw_win, $discard_win, $big_fan_win, $best, $fan_count, 0)");
+            (`game`, `uid`, `nickname`, `avatar`, `score`, `total_games`, `wins`, `losses`, `draws`, `self_draw_wins`, `discard_wins`, `big_fan_wins`, `best_score`, `max_fan`, `is_ai`)
+            VALUES ('mj', $uid, '', '', $score_change, 1, $wins, $losses, $draws, $self_draw_win, $discard_win, $big_fan_win, $best, $fan_count, 0)");
         $new_score = $score_change;
     }
     wx_mojang_ok(['msg' => '游戏记录已保存', 'score' => $new_score]);
@@ -574,17 +580,34 @@ function wx_mojang_api_complete_game($uid, $userData) {
 
 function wx_mojang_api_get_shop_items() {
     $db = Database::getInstance();
-    $table = DB_PREFIX . 'wx_mojang_shop_items';
-    $result = $db->query("SELECT * FROM `" . $table . "` WHERE `is_active` = 1 ORDER BY `sort_order` ASC, `id` ASC");
+    $table = DB_PREFIX . 'wx_games_shop_items';
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+
+    // 读取当前登录用户
+    $current_user = wx_mojang_check_user();
+    $uid = $current_user ? intval($current_user['uid']) : 0;
+
+    $result = $db->query("SELECT * FROM `" . $table . "` WHERE (`game` = 'mj' OR `is_global` = 1) AND `status` = 1 ORDER BY `sort_order` ASC, `id` ASC");
     $items = [];
     while ($row = $db->fetch_array($result)) {
+        $item_id = (int)$row['id'];
+        $owned = false;
+        $owned_qty = 0;
+        if ($uid > 0) {
+            $own = $db->once_fetch_array("SELECT SUM(CAST(`quantity` AS SIGNED) - CAST(`used` AS SIGNED)) AS cnt FROM `" . $table_inv . "` WHERE `uid` = $uid AND `item_id` = $item_id LIMIT 1");
+            $owned_qty = intval($own['cnt'] ?? 0);
+            $owned = $owned_qty > 0;
+        }
         $items[] = [
-            'id'             => (int)$row['id'], 'name' => $row['name'],
+            'id'             => $item_id, 'name' => $row['name'],
             'description'    => $row['description'], 'icon' => $row['icon'],
             'item_type'      => $row['item_type'],
             'effect_data'    => stripslashes($row['effect_data']),
-            'price_emlog'    => (int)$row['price_emlog'], 'price_majiang' => (int)$row['price_majiang'],
+            'price_emlog'    => (int)$row['price_emlog'], 'price_majiang' => (int)$row['price_game'],
             'stock'          => (int)$row['stock'], 'max_per_user' => (int)$row['max_per_user'],
+            'is_global'      => !empty($row['is_global']),
+            'owned'          => $owned,
+            'owned_qty'      => $owned_qty,
         ];
     }
     wx_mojang_ok(['items' => $items]);
@@ -593,11 +616,11 @@ function wx_mojang_api_get_shop_items() {
 function wx_mojang_api_get_inventory($uid) {
     if ($uid <= 0) { wx_mojang_error('未登录'); }
     $db = Database::getInstance();
-    $table_inv   = DB_PREFIX . 'wx_mojang_user_items';
-    $table_items = DB_PREFIX . 'wx_mojang_shop_items';
+    $table_inv   = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
     $result = $db->query("SELECT i.*, s.`name`, s.`icon`, s.`item_type`, s.`effect_data`
         FROM `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
-        WHERE i.`uid` = $uid AND i.`quantity` > i.`used` ORDER BY i.`created` DESC");
+        WHERE i.`game` = 'mj' AND i.`uid` = $uid AND i.`quantity` > i.`used` ORDER BY i.`purchased_at` DESC");
     $items = [];
     while ($row = $db->fetch_array($result)) {
         $expired = $row['expires_at'] && $row['expires_at'] !== '0000-00-00 00:00:00' && strtotime($row['expires_at']) < time();
@@ -616,16 +639,16 @@ function wx_mojang_api_purchase_item($uid) {
     $pay_type = isset($_POST['pay_type']) ? addslashes(trim($_POST['pay_type'])) : 'both';
     if ($item_id <= 0) { wx_mojang_error('参数错误'); }
     $db = Database::getInstance();
-    $table_items = DB_PREFIX . 'wx_mojang_shop_items';
-    $item = $db->once_fetch_array("SELECT * FROM `" . $table_items . "` WHERE `id` = $item_id AND `is_active` = 1 LIMIT 1");
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
+    $item = $db->once_fetch_array("SELECT * FROM `" . $table_items . "` WHERE `id` = $item_id AND `status` = 1 AND (`game` = 'mj' OR `is_global` = 1) LIMIT 1");
     if (!$item) { wx_mojang_error('商品不存在或已下架'); }
-    $price_emlog  = (int)$item['price_emlog']; $price_majiang = (int)$item['price_majiang'];
+    $price_emlog  = (int)$item['price_emlog']; $price_majiang = (int)$item['price_game'];
     $stock = (int)$item['stock'];
     if ($stock !== -1 && $stock <= 0) { wx_mojang_error('商品已售罄'); }
     $max_per_user = (int)$item['max_per_user'];
     if ($max_per_user > 0) {
-        $table_inv = DB_PREFIX . 'wx_mojang_user_items';
-        $owned = $db->once_fetch_array("SELECT SUM(`quantity`) AS cnt FROM `" . $table_inv . "` WHERE `uid` = $uid AND `item_id` = $item_id LIMIT 1");
+        $table_inv = DB_PREFIX . 'wx_games_user_items';
+        $owned = $db->once_fetch_array("SELECT SUM(`quantity`) AS cnt FROM `" . $table_inv . "` WHERE `game` = 'mj' AND `uid` = $uid AND `item_id` = $item_id LIMIT 1");
         $current_cnt = intval($owned['cnt'] ?? 0);
         if ($current_cnt >= $max_per_user) { wx_mojang_error('已达限购数量'); }
     }
@@ -665,14 +688,24 @@ function wx_mojang_api_purchase_item($uid) {
         if ($mj_score < $price_majiang) { wx_mojang_error('麻将积分不足，需要' . $price_majiang . '积分'); }
         wx_mojang_admin_change_score($uid, -$price_majiang, '商城购买：' . $item['name'], 'system');
     }
-    $table_inv = DB_PREFIX . 'wx_mojang_user_items';
-    $existing = $db->once_fetch_array("SELECT `id`, `quantity` FROM `" . $table_inv . "` WHERE `uid` = $uid AND `item_id` = $item_id LIMIT 1");
-    if ($existing) {
-        $db->query("UPDATE `" . $table_inv . "` SET `quantity` = `quantity` + 1 WHERE `id` = " . intval($existing['id']));
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+    $is_global = !empty($item['is_global']);
+    if ($is_global) {
+        $all_games = ['ddz', 'mj', 'niuniu'];
+        foreach ($all_games as $g) {
+            $db->query("INSERT INTO `" . $table_inv . "` (`game`, `uid`, `item_id`, `quantity`, `purchased_at`, `expires_at`)
+                VALUES ('$g', $uid, $item_id, 1, " . time() . ", 0)
+                ON DUPLICATE KEY UPDATE `quantity` = `quantity` + 1");
+        }
     } else {
-        $db->query("INSERT INTO `" . $table_inv . "` (`uid`, `item_id`, `quantity`, `used`) VALUES ($uid, $item_id, 1, 0)");
+        $existing = $db->once_fetch_array("SELECT `id`, `quantity` FROM `" . $table_inv . "` WHERE `game` = 'mj' AND `uid` = $uid AND `item_id` = $item_id LIMIT 1");
+        if ($existing) {
+            $db->query("UPDATE `" . $table_inv . "` SET `quantity` = `quantity` + 1 WHERE `game` = 'mj' AND `id` = " . intval($existing['id']));
+        } else {
+            $db->query("INSERT INTO `" . $table_inv . "` (`game`, `uid`, `item_id`, `quantity`, `used`) VALUES ('mj', $uid, $item_id, 1, 0)");
+        }
     }
-    if ($stock !== -1) { $db->query("UPDATE `" . $table_items . "` SET `stock` = `stock` - 1 WHERE `id` = $item_id AND `stock` > 0"); }
+    if ($stock !== -1) { $db->query("UPDATE `" . $table_items . "` SET `stock` = `stock` - 1 WHERE `game` = 'mj' AND `id` = $item_id AND `stock` > 0"); }
     wx_mojang_ok(['msg' => '购买成功！']);
 }
 
@@ -682,18 +715,23 @@ function wx_mojang_api_use_item($uid) {
     if ($inv_id <= 0) { $inv_id = isset($_POST['user_item_id']) ? intval($_POST['user_item_id']) : 0; }
     if ($inv_id <= 0) { wx_mojang_error('参数错误'); }
     $db = Database::getInstance();
-    $table_inv   = DB_PREFIX . 'wx_mojang_user_items';
-    $table_items = DB_PREFIX . 'wx_mojang_shop_items';
+    $table_inv   = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
     $row = $db->once_fetch_array("SELECT i.*, s.`item_type`, s.`effect_data` FROM `" . $table_inv . "` i
         JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
         WHERE i.`id` = $inv_id AND i.`uid` = $uid AND i.`quantity` > i.`used` LIMIT 1");
     if (!$row) { wx_mojang_error('道具不存在或已用完'); }
     $item_type = $row['item_type'];
+    $global_types = ['title_colored', 'title_effect'];
     $cosmetic_types = ['title_colored', 'title_effect', 'card_back', 'emoticon', 'win_effect', 'title_badge'];
     if (in_array($item_type, $cosmetic_types, true)) {
         $db->query("UPDATE `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
             SET i.`is_active` = 0 WHERE i.`uid` = $uid AND s.`item_type` = '" . $db->escape_string($item_type) . "'");
-        $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `id` = " . intval($row['id']));
+        if (in_array($item_type, $global_types, true)) {
+            $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `uid` = $uid AND `item_id` = " . intval($row['item_id']));
+        } else {
+            $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `game` = 'mj' AND `id` = " . intval($row['id']));
+        }
         wx_mojang_ok(['msg' => '已激活', 'item_type' => $item_type, 'effect_data' => $row['effect_data']]);
     } elseif ($item_type === 'score_buff') {
         $effect = json_decode(stripslashes($row['effect_data']), true);
@@ -706,7 +744,7 @@ function wx_mojang_api_use_item($uid) {
         $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1, `charges` = $games, `used` = 0 WHERE `id` = " . intval($row['id']));
         wx_mojang_ok(['msg' => $multiplier . '倍加成已激活，剩余' . $games . '局', 'multiplier' => $multiplier, 'games' => $games]);
     } else {
-        $db->query("UPDATE `" . $table_inv . "` SET `used` = `used` + 1 WHERE `id` = " . intval($row['id']));
+        $db->query("UPDATE `" . $table_inv . "` SET `used` = `used` + 1 WHERE `game` = 'mj' AND `id` = " . intval($row['id']));
         wx_mojang_ok(['msg' => '使用成功']);
     }
 }
@@ -714,8 +752,8 @@ function wx_mojang_api_use_item($uid) {
 function wx_mojang_api_get_active_effects($uid) {
     if ($uid <= 0) { wx_mojang_ok([]); }
     $db = Database::getInstance();
-    $table_inv   = DB_PREFIX . 'wx_mojang_user_items';
-    $table_items = DB_PREFIX . 'wx_mojang_shop_items';
+    $table_inv   = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
     $result = $db->query("SELECT i.`id` AS inv_id, i.`item_id`, s.`item_type`, s.`effect_data`, s.`name`
         FROM `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
         WHERE i.`uid` = $uid AND i.`is_active` = 1");
@@ -730,8 +768,8 @@ function wx_mojang_api_get_active_effects($uid) {
 function wx_mojang_api_get_score_buff($uid) {
     if ($uid <= 0) { wx_mojang_ok(['has_buff' => false, 'buffs' => []]); }
     $db = Database::getInstance();
-    $table_inv   = DB_PREFIX . 'wx_mojang_user_items';
-    $table_items = DB_PREFIX . 'wx_mojang_shop_items';
+    $table_inv   = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
     $row = $db->once_fetch_array("SELECT i.`id`, i.`charges`, i.`used`, s.`effect_data`
         FROM `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
         WHERE i.`uid` = $uid AND i.`is_active` = 1 AND s.`item_type` = 'score_buff' LIMIT 1");
@@ -752,8 +790,8 @@ function wx_mojang_api_get_score_buff($uid) {
 function wx_mojang_api_consume_score_buff($uid) {
     if ($uid <= 0) { wx_mojang_ok(['multiplier' => 1, 'remaining_buffs' => []]); }
     $db = Database::getInstance();
-    $table_inv   = DB_PREFIX . 'wx_mojang_user_items';
-    $table_items = DB_PREFIX . 'wx_mojang_shop_items';
+    $table_inv   = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
     $row = $db->once_fetch_array("SELECT i.`id`, i.`charges`, i.`used`, s.`effect_data`
         FROM `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
         WHERE i.`uid` = $uid AND i.`is_active` = 1 AND s.`item_type` = 'score_buff' LIMIT 1");
@@ -761,7 +799,7 @@ function wx_mojang_api_consume_score_buff($uid) {
     $remaining = (int)$row['charges'] - (int)$row['used'] - 1;
     $effect = json_decode(stripslashes($row['effect_data']), true);
     $consumed_multiplier = isset($effect['multiplier']) ? floatval($effect['multiplier']) : 2;
-    $db->query("UPDATE `" . $table_inv . "` SET `used` = `used` + 1 WHERE `id` = " . (int)$row['id']);
+    $db->query("UPDATE `" . $table_inv . "` SET `used` = `used` + 1 WHERE `game` = 'mj' AND `id` = " . (int)$row['id']);
     if ($remaining <= 0) {
         $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 0, `used` = 0, `charges` = 0,
             `quantity` = GREATEST(`quantity` - 1, 0) WHERE `id` = " . (int)$row['id']);
@@ -775,11 +813,11 @@ function wx_mojang_admin_get_inventory() {
     $uid = isset($_GET['uid']) ? intval($_GET['uid']) : 0;
     if ($uid <= 0) { wx_mojang_error('参数错误'); }
     $db = Database::getInstance();
-    $table_inv   = DB_PREFIX . 'wx_mojang_user_items';
-    $table_items = DB_PREFIX . 'wx_mojang_shop_items';
+    $table_inv   = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
     $result = $db->query("SELECT i.*, s.`name`, s.`icon`, s.`item_type`, s.`effect_data`
         FROM `{$table_inv}` i JOIN `{$table_items}` s ON i.`item_id` = s.`id`
-        WHERE i.`uid` = $uid ORDER BY i.`created` DESC");
+        WHERE i.`uid` = $uid AND i.`game` = 'mj' ORDER BY i.`purchased_at` DESC");
     $items = [];
     while ($row = $db->fetch_array($result)) {
         $items[] = ['id' => (int)$row['id'], 'item_id' => (int)$row['item_id'],
@@ -797,13 +835,13 @@ function wx_mojang_admin_add_item() {
     $qty = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
     if ($uid <= 0 || $item_id <= 0 || $qty <= 0) { wx_mojang_error('参数错误'); }
     $db = Database::getInstance();
-    $table_inv = DB_PREFIX . 'wx_mojang_user_items';
-    $existing = $db->once_fetch_array("SELECT `id`, `quantity` FROM `{$table_inv}` WHERE `uid` = $uid AND `item_id` = $item_id LIMIT 1");
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
+    $existing = $db->once_fetch_array("SELECT `id`, `quantity` FROM `{$table_inv}` WHERE `game` = 'mj' AND `uid` = $uid AND `item_id` = $item_id LIMIT 1");
     if ($existing) {
-        $db->query("UPDATE `{$table_inv}` SET `quantity` = `quantity` + $qty WHERE `id` = " . intval($existing['id']));
+        $db->query("UPDATE `{$table_inv}` SET `quantity` = `quantity` + $qty WHERE `game` = 'mj' AND `id` = " . intval($existing['id']));
     } else {
-        $db->query("INSERT INTO `{$table_inv}` (`uid`, `item_id`, `quantity`, `used`, `is_active`, `charges`, `expires_at`, `created`)
-            VALUES ($uid, $item_id, $qty, 0, 0, -1, NULL, NOW())");
+        $db->query("INSERT INTO `{$table_inv}` (`game`, `uid`, `item_id`, `quantity`, `used`, `is_active`, `charges`, `expires_at`, `created`)
+            VALUES ('mj', $uid, $item_id, $qty, 0, 0, -1, NULL, NOW())");
     }
     wx_mojang_ok();
 }
@@ -817,7 +855,7 @@ function wx_mojang_admin_update_item() {
     $expires_at = isset($_POST['expires_at']) ? addslashes(trim($_POST['expires_at'])) : '';
     if ($inv_id <= 0) { wx_mojang_error('参数错误'); }
     $db = Database::getInstance();
-    $table_inv = DB_PREFIX . 'wx_mojang_user_items';
+    $table_inv = DB_PREFIX . 'wx_games_user_items';
     $expires_sql = $expires_at ? "'{$expires_at}'" : "NULL";
     $db->query("UPDATE `{$table_inv}` SET `quantity` = $qty, `used` = $used, `is_active` = $is_active,
         `charges` = $charges, `expires_at` = {$expires_sql} WHERE `id` = $inv_id");
@@ -828,6 +866,6 @@ function wx_mojang_admin_delete_item() {
     $inv_id = isset($_GET['inv_id']) ? intval($_GET['inv_id']) : 0;
     if ($inv_id <= 0) { wx_mojang_error('参数错误'); }
     $db = Database::getInstance();
-    $db->query("DELETE FROM `" . DB_PREFIX . "wx_mojang_user_items` WHERE `id` = $inv_id");
+    $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_user_items` WHERE `id` = $inv_id");
     wx_mojang_ok();
 }

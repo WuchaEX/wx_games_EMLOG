@@ -12,6 +12,19 @@
  */
 !defined('EMLOG_ROOT') && exit('access denied!');
 
+/**
+ * 全局工具函数
+ */
+// AI UID 映射：默认6个AI玩家的固定UID（888000-888005）
+function wx_games_get_ai_uid($name) {
+    $default_names = ['全宝蓝', '李居丽', '朴素妍', '咸恩静', '朴孝敏', '朴智妍'];
+    $idx = array_search($name, $default_names, true);
+    if ($idx !== false) {
+        return 888000 + $idx;
+    }
+    return abs(crc32($name)) % 1000000 + 888000;
+}
+
 // ============================================================
 // 插件常量
 // ============================================================
@@ -45,6 +58,16 @@ $wx_games_list = [
         'show_file'  => 'wx_games_mojang_show.php',
         'settings'   => ['title', 'guest_play', 'ai_names', 'notice', 'base_score', 'min_fan_to_win'],
     ],
+    'niuniu' => [
+        'name'       => 'H5斗牛',
+        'desc'       => '经典斗牛，五张牌比大小',
+        'icon'       => '🐂',
+        'action_key' => 'niuniu_action',
+        'signal_key' => 'wx_niuniu_signal',
+        'fn_file'    => __DIR__ . '/wx_games_niuniu_fn.php',
+        'show_file'  => 'wx_games_niuniu_show.php',
+        'settings'   => ['title', 'guest_play', 'ai_names', 'notice', 'base_bet'],
+    ],
 ];
 
 // ============================================================
@@ -62,9 +85,12 @@ if (!empty($wx_games_game) && isset($wx_games_list[$wx_games_game])) {
         require_once $g['fn_file'];
         // 调用游戏对应的信号处理函数 —— 各游戏 fn.php 需提供：
         // wx_{game}_handle_signal($signal)
-        $handler = str_replace('wx_', '', $wx_games_game) === 'ddz'
-            ? 'wx_ddz_handle_signal'
-            : 'wx_mojang_handle_signal';
+        $handler_map = [
+            'ddz'   => 'wx_ddz_handle_signal',
+            'mj'    => 'wx_mojang_handle_signal',
+            'niuniu'=> 'wx_niuniu_handle_signal',
+        ];
+        $handler = $handler_map[$wx_games_game] ?? '';
         if (function_exists($handler)) {
             $handler($signal);
         }
@@ -89,9 +115,12 @@ if (!empty($wx_games_game) && isset($wx_games_list[$wx_games_game])) {
     if (!empty($action)) {
         require_once $g['fn_file'];
         // 调用游戏对应的 AJAX 路由函数
-        $router = str_replace('wx_', '', $wx_games_game) === 'ddz'
-            ? 'wx_ddz_route_ajax'
-            : 'wx_mojang_route_ajax';
+        $router_map = [
+            'ddz'   => 'wx_ddz_route_ajax',
+            'mj'    => 'wx_mojang_route_ajax',
+            'niuniu'=> 'wx_niuniu_route_ajax',
+        ];
+        $router = $router_map[$wx_games_game] ?? '';
         if (function_exists($router)) {
             $router($action);
         }
@@ -117,10 +146,13 @@ function wx_games_index_head() {
         echo '<link rel="stylesheet" href="' . WX_GAMES_URL . 'css/hub.css?v=1.0.0">' . "\n";
         echo '<meta name="viewport" content="width=device-width, initial-scale=1.0">' . "\n";
     } elseif ($game === 'ddz') {
-        echo '<link rel="stylesheet" href="' . WX_GAMES_URL . 'games/ddz/css/style.css?v=1.0.2">' . "\n";
+        echo '<link rel="stylesheet" href="' . WX_GAMES_URL . 'games/ddz/css/style.css?v=1.0.3">' . "\n";
         echo '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">' . "\n";
     } elseif ($game === 'mj') {
         echo '<link rel="stylesheet" href="' . WX_GAMES_URL . 'games/mojang/css/style.css?v=1.0.0">' . "\n";
+        echo '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">' . "\n";
+    } elseif ($game === 'niuniu') {
+        echo '<link rel="stylesheet" href="' . WX_GAMES_URL . 'games/niuniu/css/style.css?v=1.0.0">' . "\n";
         echo '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">' . "\n";
     }
 }

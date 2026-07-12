@@ -43,7 +43,7 @@ if ($uid > 0) {
     );
     if ($pending) {
         $penalty = -(int)$config['base_score'] * $config['penalty_multiplier'];
-        $db->query("UPDATE `{$table}` SET status=0 WHERE id={$pending['id']}");
+        $db->query("UPDATE `{$table}` SET status=0 WHERE uid={$uid} AND status=1");
         wx_mojang_apply_penalty($uid);
         $penaltyMsg = "检测到未完成的游戏，已自动惩罚：{$penalty} 积分";
     }
@@ -66,8 +66,6 @@ if ($uid > 0) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 </head>
 <body class="mj-page">
-    <script type="text/javascript" id="myhk" src="https://myhkw.cn/api/player/1733906404100" key="1733906404100" m="1"></script>
-	<script type="text/javascript" src="https://myhkw.cn/player/js/jquery.min.js"></script>
 <!-- 数据注入 -->
 <script>
 window.MJ_CONFIG = <?= json_encode([
@@ -117,8 +115,6 @@ window.MJ_GUEST_PLAY = <?= $config['guest_play'] == '1' ? 'true' : 'false' ?>;
             <?php else: ?>
             <a href="<?= BLOG_URL ?>admin/account.php?action=signin" class="nav-btn nav-home-btn">登 录</a>
             <?php endif; ?>
-            <button class="nav-btn" id="btnShop" onclick="ShopManager.show()" style="display:none">🛒 <span class="nav-btn-text">商城</span></button>
-            <button class="nav-btn" id="btnInventory" onclick="InventoryManager.show()" style="display:none">🎒 <span class="nav-btn-text">背包</span></button>
             <button class="nav-btn" id="btnLeaderboard" onclick="Leaderboard.show()">🏆 <span class="nav-btn-text">排行</span></button>
             <button class="nav-btn" onclick="showFanTypes()">🀄 <span class="nav-btn-text">番型</span></button>
             <button class="nav-btn nav-home-btn" id="btnReturnHome" onclick="return confirm('确定要返回首页吗？') &amp;&amp; (window.location.href='<?php echo BLOG_URL; ?>')">返回首页</button>
@@ -138,7 +134,7 @@ window.MJ_GUEST_PLAY = <?= $config['guest_play'] == '1' ? 'true' : 'false' ?>;
 
 <!-- ====== 商城弹窗（ddz 风格） ====== -->
 <div class="mj-list-modal hidden" id="shopModal">
-    <div class="mj-list-content" onclick="event.stopPropagation()" style="max-width:520px;">
+    <div class="mj-list-content" onclick="event.stopPropagation()" style="max-width:500px;">
         <div class="list-title">🛒 道具商城</div>
         <div style="display:flex;gap:12px;justify-content:center;margin-bottom:15px;font-size:13px;color:#ccc;flex-wrap:wrap;">
             <span>麻将积分: <strong id="shopMjScore" style="color:#ffd700">0</strong></span>
@@ -155,7 +151,7 @@ window.MJ_GUEST_PLAY = <?= $config['guest_play'] == '1' ? 'true' : 'false' ?>;
 
 <!-- ====== 背包弹窗（ddz 风格） ====== -->
 <div class="mj-list-modal hidden" id="inventoryModal">
-    <div class="mj-list-content" onclick="event.stopPropagation()" style="max-width:520px;">
+    <div class="mj-list-content" onclick="event.stopPropagation()" style="width:90vw;max-width:500px;">
         <div class="list-title">🎒 我的背包</div>
         <div class="list-body" id="inventoryList">
             <div style="text-align:center;color:#aaa;padding:30px;">加载中...</div>
@@ -168,7 +164,7 @@ window.MJ_GUEST_PLAY = <?= $config['guest_play'] == '1' ? 'true' : 'false' ?>;
 
 <!-- ====== 积分流水弹窗（ddz 风格） ====== -->
 <div class="mj-list-modal hidden" id="scoreLogModal">
-    <div class="mj-list-content" onclick="event.stopPropagation()">
+    <div class="mj-list-content" onclick="event.stopPropagation()" style="width:90vw;max-width:500px;">
         <div class="list-title">📊 积分流水</div>
         <div class="score-log-list" id="scoreLogList">
             <div style="text-align:center;color:#aaa;padding:20px;">暂无记录</div>
@@ -319,7 +315,7 @@ const ShopManager = {
             return '<div class="shop-item" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;margin-bottom:6px;background:rgba(255,255,255,0.06);">' +
                 '<span style="font-size:22px;">' + (item.icon || '🎁') + '</span>' +
                 '<div style="flex:1;min-width:0;">' +
-                    '<div style="font-weight:bold;font-size:13px;">' + item.name + '</div>' +
+                    '<div style="font-weight:bold;font-size:13px;">' + item.name + (item.is_global ? ' <span style="font-size:9px;color:#fdcb6e;border:1px solid #fdcb6e;border-radius:4px;padding:0 4px;vertical-align:middle;">通用</span>' : '') + '</div>' +
                     '<div style="font-size:10px;color:var(--text-muted);">' +
                         '<span class="shop-desc" id="shopDesc_' + itemId + '" data-expanded="false">' + (item.description || '') + '</span>' +
                         (item.description && item.description.length > 50 ? '<span class="shop-desc-toggle" id="shopDescToggle_' + itemId + '" onclick="toggleShopDesc(' + itemId + ')" style="color:var(--accent-blue);cursor:pointer;margin-left:2px;">展开</span>' : '') +
@@ -328,7 +324,10 @@ const ShopManager = {
                 '</div>' +
                 '<div style="text-align:right;flex-shrink:0;">' +
                     '<div style="font-size:11px;margin-bottom:3px;color:var(--text-secondary);">' + priceHtml + '</div>' +
-                    '<button class="mj-btn mj-btn-primary mj-btn-sm" onclick="ShopManager.buyItem(' + item.id + ',' + item.price_majiang + ',' + item.price_emlog + ')">购买</button>' +
+                    (item.owned
+                        ? '<span style="display:inline-block;font-size:10px;padding:2px 8px;background:rgba(46,204,113,0.15);color:#2ecc71;border-radius:8px;border:1px solid #2ecc71;">✓ 已拥有</span>'
+                        : '<button class="mj-btn mj-btn-primary mj-btn-sm" onclick="ShopManager.buyItem(' + item.id + ',' + item.price_majiang + ',' + item.price_emlog + ')">购买</button>'
+                    ) +
                 '</div></div>';
         }).join('');
     },
@@ -485,7 +484,7 @@ const InventoryManager = {
         list.innerHTML = filtered.map(item => {
             const isCosmetic = cosmeticTypes.indexOf(item.item_type) !== -1;
             let btnHtml = '';
-            if (item.is_active) {
+            if (item.is_active == 1) {
                 btnHtml = '<span style="font-size:10px;padding:2px 8px;background:rgba(34,197,94,0.2);color:var(--accent-green);border-radius:8px;border:1px solid var(--accent-green);white-space:nowrap;">✓ 已激活</span>';
             } else if (isCosmetic) {
                 btnHtml = '<button class="mj-btn mj-btn-success mj-btn-sm" onclick="InventoryManager.useItem(' + item.inv_id + ',this)">🎯 激活</button>';
@@ -844,13 +843,9 @@ function showFanTypes() {
     renderFanModal();
 }
 
-// ====== 导航栏游戏UI开关 ======
+// ====== 导航栏游戏UI开关（nav 按钮已移除，保留空函数避免调用报错） ======
 function toggleNavGameUI(show) {
-    const ids = ['btnShop', 'btnInventory'];
-    ids.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = show ? 'inline-flex' : 'none';
-    });
+    // 无操作 —— 商城/背包按钮已从导航栏移除
 }
 
 // ====== 积分流水 ======
@@ -2947,6 +2942,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 </script>
-<script type="text/javascript" id="myhk" src="https://myhkw.cn/api/player/1733906404100" key="1733906404100" m="1"></script>
+<script>
+(function(){if(localStorage.getItem("wx_games_player_on")!=="1"||document.getElementById("myhk"))return;
+var s1=document.createElement("script");s1.type="text/javascript";s1.id="myhk";s1.src="https://myhkw.cn/api/player/1733906404100";s1.setAttribute("key","1733906404100");s1.setAttribute("m","1");document.body.appendChild(s1);
+if(!document.querySelector("script[src*=\"myhkw.cn/player/js/jquery\"]")){var s2=document.createElement("script");s2.type="text/javascript";s2.src="https://myhkw.cn/player/js/jquery.min.js";document.body.appendChild(s2)}
+})();
+</script>
 </body>
 </html>

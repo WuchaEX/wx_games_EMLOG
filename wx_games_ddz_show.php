@@ -7,6 +7,7 @@
 $plugin_url = wx_ddz_get_plugin_url();
 $config = wx_ddz_get_config();
 $current_user = wx_ddz_check_user();
+$base_bet = isset($config['base_bet']) ? intval($config['base_bet']) : 100;
 
 // 获取当前用户的积分数据（从数据库）
 $user_score_data = null;
@@ -33,13 +34,13 @@ if ($current_user) {
     );
 
     if ($pending_row) {
-        // 有未完成的游戏 → 立即惩罚
+        // 有未完成的游戏 → 立即惩罚（关闭所有历史未完成记录）
         $penalty_mul = isset($config['penalty_multiplier']) ? floatval($config['penalty_multiplier']) : 1.0;
-        $penalty = intval(-100 * $penalty_mul);
+        $penalty = intval(-$base_bet * $penalty_mul);
         $now = time();
         $db_check->query("UPDATE `$table_games` SET 
             `result` = 'lose', `score_change` = $penalty, `status` = 0, `finished_at` = $now
-            WHERE `id` = " . intval($pending_row['id']));
+            WHERE `uid` = " . intval($current_user['uid']) . " AND `status` = 1");
         wx_ddz_apply_penalty($current_user['uid'], $penalty);
         $penalty_message = '检测到你上一局中途退出，已扣除 ' . abs($penalty) . ' 积分';
         $user_score_data = wx_ddz_get_user_score($current_user['uid']);
@@ -53,11 +54,11 @@ if ($current_user) {
 $score_logs = [];
 $emlog_credits = 0;
 if ($current_user) {
-    $table_logs = DB_PREFIX . 'wx_ddz_logs';
+    $table_logs = DB_PREFIX . 'wx_games_logs';
     $log_uid = intval($current_user['uid']);
     $log_result = $db_check->query(
         "SELECT `score_change`, `score_before`, `score_after`, `reason`, `created_at`
-         FROM `$table_logs` WHERE `uid` = $log_uid
+         FROM `$table_logs` WHERE `game` = 'ddz' AND `uid` = $log_uid
          ORDER BY `created_at` DESC LIMIT 50"
     );
     if ($log_result) {
@@ -107,14 +108,6 @@ if ($current_user) {
                 <button class="nav-btn hidden" id="btnNewGame">
                     <span class="nav-btn-icon">🔄</span>
                     <span class="nav-btn-text">新游戏</span>
-                </button>
-                <button class="nav-btn hidden" id="btnShop">
-                    <span class="nav-btn-icon">🛒</span>
-                    <span class="nav-btn-text">商城</span>
-                </button>
-                <button class="nav-btn hidden" id="btnInventory">
-                    <span class="nav-btn-icon">🎒</span>
-                    <span class="nav-btn-text">背包</span>
                 </button>
                 <a href="<?php echo BLOG_URL; ?>" class="nav-home-btn" id="navHomeBtn">返回首页</a>
             </div>
@@ -315,7 +308,7 @@ if ($current_user) {
 
     <!-- 积分流水弹窗 -->
     <div class="leaderboard-modal hidden" id="scoreLogModal">
-        <div class="leaderboard-content">
+        <div class="leaderboard-content" style="width:90vw;max-width:500px;">
             <div class="leaderboard-title">📊 积分流水</div>
             <div class="score-log-list" id="scoreLogList">
                 <div style="text-align: center; color: #aaa; padding: 20px;">暂无记录</div>
@@ -345,7 +338,7 @@ if ($current_user) {
 
     <!-- 背包弹窗 -->
     <div class="leaderboard-modal hidden" id="inventoryModal">
-        <div class="leaderboard-content" style="max-width: 500px;">
+        <div class="leaderboard-content" style="width:90vw;max-width:500px;">
             <div class="leaderboard-title">🎒 我的背包</div>
             <div class="leaderboard-list" id="inventoryList">
                 <div style="text-align: center; color: #aaa; padding: 30px;">加载中...</div>
@@ -376,11 +369,10 @@ if ($current_user) {
             loginUrl: '<?php echo $login_url; ?>',
             leaderboardApi: '<?php echo $base_url; ?>?plugin=wx_games&game=ddz',
             cardUrl: '<?php echo $plugin_url; ?>assets/cards/',
+            baseBet: <?php echo $base_bet; ?>,
             penaltyMultiplier: <?php echo isset($config['penalty_multiplier']) ? floatval($config['penalty_multiplier']) : 1.0; ?>,
             maxEntries: <?php echo isset($config['max_entries']) ? intval($config['max_entries']) : 100; ?>
         };
-
-        window.WX_DDZ_MAX_ENTRIES = EMLOG_CONFIG.maxEntries;
 
         // 当前登录用户信息（由PHP注入，未登录为null）
         window.WX_DDZ_USER = <?php echo $current_user ? json_encode($current_user) : 'null'; ?>;
@@ -491,14 +483,16 @@ if ($current_user) {
 
             // 用本地游戏进度计算实际惩罚
             var multi = gameState.multiplier || 1;
-            var penalty = 100 * multi * (EMLOG_CONFIG.penaltyMultiplier || 1);
+            var baseBet = EMLOG_CONFIG.baseBet || 100;
+            var penalty = baseBet * multi * (EMLOG_CONFIG.penaltyMultiplier || 1);
+            console.log('[DDZ] 惩罚计算: 底分' + baseBet + ' × 倍率' + multi + ' × 惩罚系数' + (EMLOG_CONFIG.penaltyMultiplier || 1).toFixed(1) + ' = ' + penalty);
 
             // sendBeacon 会携带 cookie 发送（浏览器不拦截）
             navigator.sendBeacon('?plugin=wx_games&game=ddz&wxddz_signal=penalty&points=' + penalty);
 
             // 浏览器原生确认框
             e.preventDefault();
-            e.returnValue = '游戏进行中，离开将被扣除 ' + penalty + ' 积分（100×倍率' + multi + '×惩罚' + (EMLOG_CONFIG.penaltyMultiplier || 1).toFixed(1) + '）！';
+            e.returnValue = '游戏进行中，离开将被扣除 ' + penalty + ' 积分（底分' + baseBet + '×倍率' + multi + '×惩罚' + (EMLOG_CONFIG.penaltyMultiplier || 1).toFixed(1) + '）！';
         });
 
         // ==================== 记牌器 ====================
@@ -537,7 +531,7 @@ if ($current_user) {
 
         // ==================== 导航栏游戏UI控制 ====================
         function toggleNavGameUI(show) {
-            const ids = ['navUserInfo', 'navScoreBox', 'btnLeaderboard', 'btnNewGame', 'btnShop', 'btnInventory'];
+            const ids = ['navUserInfo', 'navScoreBox', 'btnLeaderboard', 'btnNewGame'];
             ids.forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
@@ -696,6 +690,18 @@ if ($current_user) {
 
                 cardEl.addEventListener('touchend', handleSelect, { passive: false });
                 cardEl.addEventListener('click', handleSelect);
+
+                // hover z-index修复：inline style绕开层叠上下文问题
+                cardEl.addEventListener('mouseenter', function() {
+                    if (!this.classList.contains('selected')) {
+                        this.style.zIndex = '100';
+                    }
+                });
+                cardEl.addEventListener('mouseleave', function() {
+                    if (!this.classList.contains('selected')) {
+                        this.style.zIndex = '';
+                    }
+                });
             });
         }
 
@@ -1659,10 +1665,11 @@ if ($current_user) {
             // 如果游戏进行中，先确认惩罚
             if (gameInProgress && currentUser) {
                 var multi = gameState.multiplier || 1;
-                var penalty = 100 * multi * (EMLOG_CONFIG.penaltyMultiplier || 1);
+                var baseBet = EMLOG_CONFIG.baseBet || 100;
+                var penalty = baseBet * multi * (EMLOG_CONFIG.penaltyMultiplier || 1);
                 var msg = '⚠️ 放弃当前对局\n\n';
                 msg += '开启新游戏、刷新页面、退出页面时，本局即算失败。\n';
-                msg += '计算公式：100 × 游戏倍率(' + multi + ') × 惩罚系数(' + (EMLOG_CONFIG.penaltyMultiplier || 1).toFixed(1) + ')\n';
+                msg += '计算公式：底分' + baseBet + ' × 游戏倍率(' + multi + ') × 惩罚系数(' + (EMLOG_CONFIG.penaltyMultiplier || 1).toFixed(1) + ')\n';
                 msg += '将扣除 ' + penalty + ' 积分。\n\n';
                 msg += '确定要放弃吗？';
 
@@ -1889,12 +1896,15 @@ if ($current_user) {
                     return '<div class="shop-item">' +
                         '<span style="font-size:22px;">' + (item.icon || '🎁') + '</span>' +
                         '<div style="flex:1;min-width:0;">' +
-                            '<div style="font-weight:bold;font-size:13px;">' + item.name + '</div>' +
+                            '<div style="font-weight:bold;font-size:13px;">' + item.name + (item.is_global ? ' <span style="font-size:9px;color:#fdcb6e;border:1px solid #fdcb6e;border-radius:4px;padding:0 4px;vertical-align:middle;">通用</span>' : '') + '</div>' +
                             '<div style="font-size:10px;color:#aaa;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">' + (item.description || '') + '</div>' +
                         '</div>' +
                         '<div style="text-align:right;flex-shrink:0;">' +
                             '<div style="font-size:11px;margin-bottom:3px;">' + priceHtml + '</div>' +
-                            '<button class="btn btn-primary shop-buy-btn" style="font-size:10px;padding:2px 8px;" data-id="' + item.id + '" data-emlog="' + item.price_emlog + '" data-ddz="' + item.price_ddz + '">购买</button>' +
+                            (item.owned
+                                ? '<span style="display:inline-block;font-size:10px;padding:2px 8px;background:rgba(46,204,113,0.15);color:#2ecc71;border-radius:8px;border:1px solid #2ecc71;">✓ 已拥有</span>'
+                                : '<button class="btn btn-primary shop-buy-btn" style="font-size:10px;padding:2px 8px;" data-id="' + item.id + '" data-emlog="' + item.price_emlog + '" data-ddz="' + item.price_ddz + '">购买</button>'
+                            ) +
                         '</div>' +
                     '</div>';
                 }).join('');
@@ -1977,27 +1987,20 @@ if ($current_user) {
             }
         };
 
-        document.getElementById('btnShop').addEventListener('click', () => {
-            ShopManager.show();
-        });
         document.getElementById('btnCloseShop').addEventListener('click', () => {
             document.getElementById('shopModal').classList.add('hidden');
         });
 
-        // ==================== 背包 ====================
+        // ==================== 背包（以麻将风格为基准） ====================
         const InventoryManager = {
             currentFilter: 'all',
             allItems: [],
             async show() {
-                if (!currentUser) {
-                    showToast('请先登录');
-                    return;
-                }
+                if (!currentUser) { showToast('请先登录'); return; }
                 const modal = document.getElementById('inventoryModal');
                 modal.classList.remove('hidden');
                 const list = document.getElementById('inventoryList');
                 list.innerHTML = '<div style="text-align:center;color:#aaa;padding:30px;">加载中...</div>';
-
                 try {
                     const res = await fetch(EMLOG_CONFIG.leaderboardApi + '&ddz_action=get_inventory', { credentials: 'include' });
                     const data = await res.json();
@@ -2015,88 +2018,63 @@ if ($current_user) {
             },
             renderFilterBar() {
                 const list = document.getElementById('inventoryList');
-                var oldBar = document.getElementById('invFilterBar');
-                if (oldBar) oldBar.remove();
+                const existing = document.getElementById('invFilterBar');
+                if (existing) existing.remove();
                 const bar = document.createElement('div');
                 bar.id = 'invFilterBar';
                 bar.style.cssText = 'display:flex;gap:6px;justify-content:center;margin-bottom:12px;flex-wrap:wrap;';
-                var self = this;
-                var types = ['all'];
-                this.allItems.forEach(function(item) {
-                    if (types.indexOf(item.item_type) === -1) types.push(item.item_type);
-                });
-                types.forEach(function(key) {
+                const types = ['all', ...new Set(this.allItems.map(i => i.item_type))];
+                types.forEach(key => {
                     const btn = document.createElement('button');
-                    btn.style.cssText = 'font-size:10px;padding:3px 8px;border-radius:12px;border:none;cursor:pointer;transition:all 0.2s;white-space:nowrap;';
+                    btn.style.cssText = 'padding:4px 12px;font-size:11px;border:none;border-radius:20px;cursor:pointer;transition:all 0.2s;white-space:nowrap;font-weight:600;';
                     if (key === 'all') {
                         btn.textContent = '全部';
-                        btn.style.background = 'linear-gradient(135deg,#e17055,#fdcb6e)';
+                        btn.style.background = 'linear-gradient(135deg,#4a7cf7,#3b82f6)';
                         btn.style.color = '#fff';
                     } else {
-                        var icon = SHOP_TYPE_ICONS[key] || '🎁';
-                        var name = SHOP_TYPE_NAMES[key] || key;
-                        btn.textContent = icon + ' ' + name;
-                        btn.style.background = 'rgba(255,255,255,0.1)';
+                        btn.textContent = (SHOP_TYPE_ICONS[key] || '🎁') + ' ' + (SHOP_TYPE_NAMES[key] || key);
+                        btn.style.background = 'rgba(255,255,255,0.08)';
                         btn.style.color = '#ccc';
+                        btn.style.border = '1px solid rgba(255,255,255,0.15)';
                     }
                     btn.dataset.filter = key;
-                    btn.addEventListener('click', function() {
-                        self.currentFilter = this.dataset.filter;
-                        bar.querySelectorAll('button').forEach(function(b) {
-                            if (b.dataset.filter === 'all') {
-                                b.style.background = 'rgba(255,255,255,0.1)'; b.style.color = '#ccc';
-                            } else {
-                                b.style.background = 'rgba(255,255,255,0.1)'; b.style.color = '#ccc';
-                            }
-                        });
-                        this.style.background = 'linear-gradient(135deg,#e17055,#fdcb6e)';
-                        this.style.color = '#fff';
-                        if (this.dataset.filter === 'all') {
-                            bar.querySelectorAll('button').forEach(function(b) {
-                                if (b.dataset.filter === 'all') { b.style.background = 'linear-gradient(135deg,#e17055,#fdcb6e)'; b.style.color = '#fff'; }
-                            });
-                        }
-                        self.renderItems();
-                    });
+                    btn.onclick = () => {
+                        this.currentFilter = key;
+                        bar.querySelectorAll('button').forEach(b => { b.style.background = 'rgba(255,255,255,0.08)'; b.style.color = '#ccc'; b.style.border = '1px solid rgba(255,255,255,0.15)'; });
+                        btn.style.background = 'linear-gradient(135deg,#4a7cf7,#3b82f6)';
+                        btn.style.color = '#fff';
+                        btn.style.border = 'none';
+                        this.renderItems();
+                    };
                     bar.appendChild(btn);
                 });
                 list.parentNode.insertBefore(bar, list);
             },
             renderItems() {
                 const list = document.getElementById('inventoryList');
-                const filtered = this.currentFilter === 'all'
-                    ? this.allItems
-                    : this.allItems.filter(function(item) { return item.item_type === InventoryManager.currentFilter; });
+                const filtered = this.currentFilter === 'all' ? this.allItems : this.allItems.filter(i => i.item_type === this.currentFilter);
                 if (filtered.length === 0) {
                     list.innerHTML = '<div style="text-align:center;color:#aaa;padding:30px;">该分类暂无道具</div>';
                     return;
                 }
-                list.innerHTML = filtered.map(function(item) {
-                    const cosmeticTypes = ['title_colored', 'title_effect', 'card_back', 'emoticon', 'bomb_effect', 'title_badge'];
+                const cosmeticTypes = ['title_colored', 'title_effect', 'title_badge', 'card_back', 'bomb_effect', 'emoticon'];
+                list.innerHTML = filtered.map(item => {
                     const isCosmetic = cosmeticTypes.indexOf(item.item_type) !== -1;
                     let btnHtml = '';
-                    if (item.is_active) {
-                        btnHtml = '<span style="font-size:10px;padding:2px 8px;background:rgba(46,204,113,0.2);color:#2ecc71;border-radius:8px;border:1px solid #2ecc71;white-space:nowrap;">✓ 已激活</span>';
+                    if (item.is_active == 1) {
+                        btnHtml = '<span style="font-size:10px;padding:2px 8px;background:rgba(34,197,94,0.2);color:#22c55e;border-radius:8px;border:1px solid #22c55e;white-space:nowrap;">✓ 已激活</span>';
                     } else if (isCosmetic) {
-                        btnHtml = '<button class="btn btn-primary use-item-btn" style="font-size:10px;padding:2px 8px;" data-inv_id="' + item.inv_id + '">🎯 激活</button>';
+                        btnHtml = '<button class="btn btn-primary" style="font-size:11px;padding:4px 12px;" onclick="InventoryManager.useItem(' + (item.inv_id || item.id) + ',this)">🎯 激活</button>';
                     } else {
-                        btnHtml = '<button class="btn btn-primary use-item-btn" style="font-size:10px;padding:2px 8px;" data-inv_id="' + item.inv_id + '">使用</button>';
+                        btnHtml = '<button class="btn btn-primary" style="font-size:11px;padding:4px 12px;" onclick="InventoryManager.useItem(' + (item.inv_id || item.id) + ',this)">使用</button>';
                     }
-                    return '<div class="shop-item">' +
+                    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;margin-bottom:6px;background:rgba(255,255,255,0.06);">' +
                         '<span style="font-size:22px;">' + (item.icon || '🎁') + '</span>' +
                         '<div style="flex:1;min-width:0;">' +
                             '<div style="font-weight:bold;font-size:13px;">' + item.name + '</div>' +
-                            '<div style="font-size:10px;color:#aaa;">剩余 x' + item.quantity + '</div>' +
-                        '</div>' +
-                        btnHtml +
-                    '</div>';
+                            '<div style="font-size:10px;color:#aaa;">剩余 x' + (item.quantity || 1) + '</div>' +
+                        '</div>' + btnHtml + '</div>';
                 }).join('');
-
-                list.querySelectorAll('.use-item-btn').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        InventoryManager.useItem(parseInt(this.dataset.inv_id), this);
-                    });
-                });
             },
             async useItem(invId, btnEl) {
                 if (!confirm('确认使用此道具？')) return;
@@ -2110,25 +2088,28 @@ if ($current_user) {
                     });
                     const data = await res.json();
                     if (data.code === 0) {
-                        showToast(data.msg || '✅ 使用成功');
-                        // 刷新背包
-                        this.show();
-                        // 重新加载道具效果
+                        showShopFeedback('✅', '已激活', '道具已成功激活');
                         await loadPlayerEffects();
-                        // 再次刷新背包确保激活状态显示正确
-                        this.show();
+                        this.refreshItems();
                     } else {
-                        showToast(data.msg || '使用失败');
+                        showShopFeedback('❌', '使用失败', data.message || '未知错误');
                     }
                 } catch (e) {
-                    showToast('网络错误');
+                    showShopFeedback('❌', '网络错误', '请重试');
                 }
+            },
+            async refreshItems() {
+                try {
+                    const res = await fetch(EMLOG_CONFIG.leaderboardApi + '&ddz_action=get_inventory', { credentials: 'include' });
+                    const data = await res.json();
+                    if (data.code === 0 && data.data && data.data.items) {
+                        this.allItems = data.data.items;
+                        this.renderItems();
+                    }
+                } catch(e) {}
             }
         };
 
-        document.getElementById('btnInventory').addEventListener('click', () => {
-            InventoryManager.show();
-        });
         document.getElementById('btnCloseInventory').addEventListener('click', () => {
             document.getElementById('inventoryModal').classList.add('hidden');
         });
@@ -2187,5 +2168,11 @@ if ($current_user) {
         }, { passive: true });
     })();
     </script>
+<script>
+(function(){if(localStorage.getItem("wx_games_player_on")!=="1"||document.getElementById("myhk"))return;
+var s1=document.createElement("script");s1.type="text/javascript";s1.id="myhk";s1.src="https://myhkw.cn/api/player/1733906404100";s1.setAttribute("key","1733906404100");s1.setAttribute("m","1");document.body.appendChild(s1);
+if(!document.querySelector("script[src*=\"myhkw.cn/player/js/jquery\"]")){var s2=document.createElement("script");s2.type="text/javascript";s2.src="https://myhkw.cn/player/js/jquery.min.js";document.body.appendChild(s2)}
+})();
+</script>
 </body>
 </html>
