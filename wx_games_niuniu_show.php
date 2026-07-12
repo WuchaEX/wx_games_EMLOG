@@ -593,15 +593,14 @@ async function loadPlayerEffects() {
         data.data.forEach(item => {
             try {
                 const effectData = JSON.parse(item.effect_data || '{}');
-                // 兼容 DDZ/MJ 的 title_colored/title_effect 和 Niuniu 的 nickname_color/effect
-                if ((item.item_type === 'title_colored' || item.item_type === 'nickname_color') && effectData.color) {
+                if (item.item_type === 'title_colored' && effectData.color) {
                     effects.titleColor = effectData.color;
                 }
-                if ((item.item_type === 'title_effect' || item.item_type === 'effect') && effectData.effect) {
+                if (item.item_type === 'title_effect' && effectData.effect) {
                     effects.titleEffect = effectData.effect;
                     if (effectData.color) effects.titleEffectColor = effectData.color;
                 }
-                if (item.item_type === 'title_badge' || item.item_type === 'title') {
+                if (item.item_type === 'title_badge') {
                     effects.titleBadge = effectData.badge || item.name || '称号';
                 }
             } catch(e) {}
@@ -1250,10 +1249,6 @@ const SHOP_TYPE_NAMES = {
     'title_effect': '昵称特效',
     'card_back': '牌背皮肤',
     'emoticon': '专属表情',
-    'nickname_color': '昵称颜色',
-    'effect': '特效',
-    'title': '称号',
-    'buff': '积分加成',
     'score_buff': '积分加成卡',
     'title_badge': '称号徽章'
 };
@@ -1262,10 +1257,6 @@ const SHOP_TYPE_ICONS = {
     'title_effect': '✨',
     'card_back': '🃏',
     'emoticon': '😎',
-    'nickname_color': '🎨',
-    'effect': '✨',
-    'title': '🏅',
-    'buff': '⚡',
     'score_buff': '⚡',
     'title_badge': '👑'
 };
@@ -1482,7 +1473,7 @@ const InventoryManager = {
             body.innerHTML = '<div style="text-align:center;color:#aaa;padding:30px;">该分类暂无道具</div>';
             return;
         }
-        const cosmeticTypes = ['title_colored', 'title_effect', 'title_badge', 'card_back', 'nickname_color', 'effect', 'emoticon'];
+        const cosmeticTypes = ['title_colored', 'title_effect', 'title_badge', 'card_back', 'emoticon'];
         body.innerHTML = filtered.map(item => {
             const isCosmetic = cosmeticTypes.indexOf(item.item_type) !== -1;
             let btnHtml = '';

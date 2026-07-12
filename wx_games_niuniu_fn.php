@@ -768,21 +768,13 @@ function wx_niuniu_api_get_inventory() {
         $uid = intval($user['uid']);
 
         // 自动修复：同类别道具如果有多个 is_active=1，只保留最近购买的一个
-        $type_groups = [
-            'title_colored' => ['title_colored','nickname_color'],
-            'nickname_color' => ['title_colored','nickname_color'],
-            'title_effect' => ['title_effect','effect'],
-            'effect' => ['title_effect','effect'],
-            'title_badge' => ['title_badge','title'],
-            'title' => ['title_badge','title'],
-        ];
         $active_check = $db->query("SELECT ui.id, si.item_type, ui.purchased_at FROM `" . $table . "` ui
             JOIN `" . $shop . "` si ON ui.item_id = si.id
             WHERE ui.`game` = 'niuniu' AND ui.uid = $uid AND ui.is_active = 1 ORDER BY ui.purchased_at DESC");
         $seen_groups = [];
         $to_deactivate = [];
         while ($ac = $db->fetch_array($active_check)) {
-            $grp = isset($type_groups[$ac['item_type']]) ? implode(',', $type_groups[$ac['item_type']]) : $ac['item_type'];
+            $grp = $ac['item_type'];
             if (isset($seen_groups[$grp])) {
                 $to_deactivate[] = (int)$ac['id'];
             } else {
@@ -916,22 +908,11 @@ function wx_niuniu_api_use_item() {
     if (!$row) { echo json_encode(['code' => -1, 'msg' => '道具不存在或已用完'], JSON_UNESCAPED_UNICODE); exit; }
 
     $item_type = $row['item_type'];
-    $global_types = ['title_colored', 'title_effect', 'nickname_color', 'effect'];
-    $cosmetic_types = ['title_colored', 'title_effect', 'nickname_color', 'effect', 'card_back', 'emoticon', 'title_badge', 'title'];
-    // 同类型需要互斥的道具映射（跨游戏命名差异：title_colored/nickname_color 都是昵称颜色）
-    $type_groups = [
-        'title_colored' => ['title_colored', 'nickname_color'],
-        'nickname_color' => ['title_colored', 'nickname_color'],
-        'title_effect' => ['title_effect', 'effect'],
-        'effect' => ['title_effect', 'effect'],
-        'title_badge' => ['title_badge', 'title'],
-        'title' => ['title_badge', 'title'],
-    ];
-    $clear_types = isset($type_groups[$item_type]) ? $type_groups[$item_type] : [$item_type];
-    $clear_list = "'" . implode("','", array_map(function($t) use ($db) { return $db->escape_string($t); }, $clear_types)) . "'";
+    $global_types = ['title_colored', 'title_effect'];
+    $cosmetic_types = ['title_colored', 'title_effect', 'card_back', 'emoticon', 'title_badge'];
     if (in_array($item_type, $cosmetic_types, true)) {
         $db->query("UPDATE `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
-            SET i.`is_active` = 0 WHERE i.`uid` = $uid AND s.`item_type` IN (" . $clear_list . ")");
+            SET i.`is_active` = 0 WHERE i.`uid` = $uid AND s.`item_type` = '" . $db->escape_string($item_type) . "'");
         if (in_array($item_type, $global_types, true)) {
             $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `uid` = $uid AND `item_id` = " . intval($row['item_id']));
         } else {

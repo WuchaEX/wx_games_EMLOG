@@ -269,8 +269,22 @@ try {
 // ========== 商城管理 ==========
 $shopTable = DB_PREFIX . 'wx_games_shop_items';
 $shop_items = [];
-$item_types = ['card_back' => '牌背皮肤', 'nickname_color' => '昵称颜色', 'title' => '称号', 'effect' => '特效', 'buff' => '积分加成'];
-$item_type_icons = ['card_back' => '🃏', 'nickname_color' => '🎨', 'title' => '🏅', 'effect' => '✨', 'buff' => '⚡'];
+$item_types = [
+    'title_colored' => '昵称变色',
+    'title_effect'  => '昵称特效',
+    'card_back'     => '牌背皮肤',
+    'emoticon'      => '专属表情',
+    'score_buff'    => '积分加成卡',
+    'title_badge'   => '称号徽章',
+];
+$item_type_icons = [
+    'title_colored' => ['icon' => '🎨', 'hint' => '在游戏中昵称显示为彩色，如：{"color":"#ff4500"}'],
+    'title_effect'  => ['icon' => '✨', 'hint' => '昵称带光晕特效，如：{"effect":"glow","color":"gold"}'],
+    'card_back'     => ['icon' => '🃏', 'hint' => '更换AI牌背图案，如：{"skin":"diamond","url":"..."}'],
+    'emoticon'      => ['icon' => '😎', 'hint' => '游戏中发送专属弹幕，如：{"code":"victory","text":"稳了！"}'],
+    'score_buff'    => ['icon' => '⚡', 'hint' => '下N局积分加成，如：{"multiplier":1.5,"games":5}'],
+    'title_badge'   => ['icon' => '👑', 'hint' => '名称旁显示称号，如：{"badge":"地主之王"}'],
+];
 
 if (isset($_POST['niuniu_action']) && $_POST['niuniu_action'] === 'save_shop_item') {
     $item_id = Input::postIntVar('item_id', 0);
