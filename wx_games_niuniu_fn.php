@@ -438,6 +438,8 @@ function wx_niuniu_route_ajax($action) {
         case 'get_inventory':        wx_niuniu_api_get_inventory();        break;
         case 'use_item':             wx_niuniu_api_use_item();             break;
         case 'get_active_effects':   wx_niuniu_api_get_active_effects();   break;
+        case 'get_score_buff':       wx_niuniu_api_get_score_buff();       break;
+        case 'consume_score_buff':   wx_niuniu_api_consume_score_buff();   break;
         case 'purchase_item':        wx_niuniu_api_purchase_item();        break;
         case 'admin_get_inventory':  wx_niuniu_admin_get_inventory();      break;
         case 'admin_add_item':       wx_niuniu_admin_add_item();           break;
@@ -956,7 +958,59 @@ function wx_niuniu_api_get_active_effects() {
 }
 
 // ============================================================
-// 管理员：背包管理API
+// 积分加成卡（score_buff）读取 + 消耗
+// ============================================================
+function wx_niuniu_api_get_score_buff() {
+    $user = wx_niuniu_check_user();
+    if (!$user) { echo json_encode(['code' => 0, 'buffs' => []], JSON_UNESCAPED_UNICODE); exit; }
+    $uid = intval($user['uid']);
+    $db = Database::getInstance();
+    $table_inv   = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
+    $row = $db->once_fetch_array("
+        SELECT i.`id`, i.`charges`, i.`used`, s.`effect_data`
+        FROM `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
+        WHERE i.`uid` = $uid AND i.`is_active` = 1 AND s.`item_type` = 'score_buff' LIMIT 1");
+    $buffs = [];
+    if ($row) {
+        $remaining = (int)$row['charges'] - (int)$row['used'];
+        if ($remaining > 0) {
+            $effect = json_decode(stripslashes($row['effect_data']), true);
+            $buffs[] = ['multiplier' => isset($effect['multiplier']) ? floatval($effect['multiplier']) : 2, 'remaining' => $remaining];
+        } else {
+            $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 0, `used` = 0, `charges` = 0,
+                `quantity` = GREATEST(`quantity` - 1, 0) WHERE `id` = " . (int)$row['id']);
+        }
+    }
+    echo json_encode(['code' => 0, 'buffs' => $buffs], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function wx_niuniu_api_consume_score_buff() {
+    $user = wx_niuniu_check_user();
+    if (!$user) { echo json_encode(['code' => -1, 'msg' => '未登录'], JSON_UNESCAPED_UNICODE); exit; }
+    $uid = intval($user['uid']);
+    $db = Database::getInstance();
+    $table_inv   = DB_PREFIX . 'wx_games_user_items';
+    $table_items = DB_PREFIX . 'wx_games_shop_items';
+    $row = $db->once_fetch_array("
+        SELECT i.`id`, i.`charges`, i.`used`, s.`effect_data`
+        FROM `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
+        WHERE i.`uid` = $uid AND i.`is_active` = 1 AND s.`item_type` = 'score_buff' LIMIT 1");
+    if (!$row) { echo json_encode(['code' => 0, 'multiplier' => 1, 'remaining_buffs' => []]); exit; }
+    $remaining = (int)$row['charges'] - (int)$row['used'] - 1;
+    $effect = json_decode(stripslashes($row['effect_data']), true);
+    $consumed_multiplier = isset($effect['multiplier']) ? floatval($effect['multiplier']) : 2;
+    $db->query("UPDATE `" . $table_inv . "` SET `used` = `used` + 1 WHERE `game` = 'niuniu' AND `id` = " . (int)$row['id']);
+    if ($remaining <= 0) {
+        $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 0, `used` = 0, `charges` = 0,
+            `quantity` = GREATEST(`quantity` - 1, 0) WHERE `id` = " . (int)$row['id']);
+    }
+    $remaining_buffs = [];
+    if ($remaining > 0) { $remaining_buffs[] = ['multiplier' => $consumed_multiplier, 'remaining' => $remaining]; }
+    echo json_encode(['code' => 0, 'multiplier' => $consumed_multiplier, 'remaining_buffs' => $remaining_buffs]);
+    exit;
+}// 管理员：背包管理API
 // ============================================================
 function wx_niuniu_admin_get_inventory() {
     $uid = isset($_GET['uid']) ? intval($_GET['uid']) : 0;

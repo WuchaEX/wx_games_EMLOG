@@ -636,10 +636,28 @@ function renderPlayerName(name) {
     return name;
 }
 
-// 页面加载完成后加载道具效果
+// 页面加载完成后加载道具效果 + 积分加成卡信息
 document.addEventListener('DOMContentLoaded', function() {
-    if (currentUser) loadPlayerEffects();
+    if (currentUser) {
+        loadPlayerEffects();
+        loadBuffInfo();
+    }
 });
+
+// 加载积分加成卡信息并更新欢迎页显示
+async function loadBuffInfo() {
+    try {
+        const res = await fetch(NN_API + 'get_score_buff', {credentials:'include'});
+        const data = await res.json();
+        const el = document.getElementById('welcomeBuffInfo');
+        if (data.code === 0 && data.buffs && data.buffs.length > 0) {
+            const b = data.buffs[0];
+            el.innerHTML = '⚡ 积分加成卡已激活：×' + b.multiplier + '（剩余 ' + b.remaining + ' 局）';
+        } else {
+            el.innerHTML = '🃏 目前没有应用积分卡，可在商城购买';
+        }
+    } catch(e) {}
+}
 
 function getCardUrl(card) {
     if (CARD_URL === '') return '';
@@ -658,6 +676,7 @@ let currentBet = 1;
 let selectedNiuCards = []; // 手动选中的3张牌索引
 let playerNiuType = null;   // 手动配牛后的牌型
 let gameInProgress = false; // 防逃跑：游戏进行中标记
+let NN_ACTIVE_BUFF_MULT = 1; // 积分加成卡倍率（无加成=1）
 const BASE_BET = <?= intval($config['base_bet'] ?? 100) ?>;
 const AI_ASSETS_URL = '<?= WX_GAMES_URL ?>games/ddz/assets/';
 
@@ -737,6 +756,28 @@ function selectPreBet(mult) {
 
 function confirmBet() {
     console.log('[斗牛] confirmBet() - 下注倍率=' + currentBet + ', 底注=' + BASE_BET + ', 总押注=' + (BASE_BET * currentBet));
+    // 加载并消耗积分加成卡
+    NN_ACTIVE_BUFF_MULT = 1;
+    try {
+        fetch(NN_API + 'get_score_buff', {credentials:'include'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.code === 0 && data.buffs && data.buffs.length > 0) {
+                    NN_ACTIVE_BUFF_MULT = data.buffs[0].multiplier || 1;
+                    // 消耗1次
+                    fetch(NN_API + 'consume_score_buff', {method:'POST', credentials:'include'})
+                        .then(r => r.json())
+                        .then(cd => {
+                            if (cd.code === 0 && cd.multiplier > 1) {
+                                NN_ACTIVE_BUFF_MULT = cd.multiplier;
+                                console.log('[斗牛] 积分加成卡激活: ×' + cd.multiplier);
+                            }
+                        })
+                        .catch(() => {});
+                }
+            })
+            .catch(() => {});
+    } catch(e) {}
     console.log('[斗牛] → 发送 start 信号, gameInProgress = true');
     document.getElementById('phasePreBet').style.display = 'none';
     document.getElementById('phaseBet').style.display = 'block';
@@ -1070,6 +1111,12 @@ function startReveal() {
 }
 
 async function finishGame(totalChange, detailHtml, aiChanges) {
+    // 应用积分加成卡倍率
+    if (NN_ACTIVE_BUFF_MULT > 1 && totalChange > 0) {
+        const originalChange = totalChange;
+        totalChange = Math.round(totalChange * NN_ACTIVE_BUFF_MULT);
+        console.log('[斗牛] 积分加成卡: ' + originalChange + ' × ' + NN_ACTIVE_BUFF_MULT + ' = ' + totalChange);
+    }
     console.log('[斗牛] finishGame() totalChange=' + totalChange + ', aiChanges=' + JSON.stringify(aiChanges) + ', gameInProgress=' + gameInProgress + ' → false');
     gameInProgress = false;
     // 等待 showdown 完成并关闭本局游戏记录，避免返回大厅后刷新被误判为逃跑
