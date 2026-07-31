@@ -227,6 +227,43 @@ SQL
             1 => ['name' => 'AI小帅', 'avatar' => 'ai2.jpg', 'quotes' => ['win' => ['哈哈'], 'lose' => ['下次赢']]],
         ], 'array');
     }
+
+    // Plinko Storage 初始化（config 仍走 emlog_storage，与 ddz/mj/niuniu 一致）
+    $storage_plinko = Storage::getInstance('wx_plinko');
+    $config_plinko = $storage_plinko->getValue('config');
+    if (empty($config_plinko)) {
+        $storage_plinko->setValue('config', [
+            'title' => 'H5弹珠台', 'init_balance' => 200,
+            'notice' => '欢迎来到H5弹珠台！选择风险等级，投球赢取奖励！',
+            'recent_updates' => '', 'recharge_link' => '',
+        ], 'array');
+    }
+    // 玩家数据自有表
+    $db->query("CREATE TABLE IF NOT EXISTS `" . DB_PREFIX . "wx_plinko_accounts` (
+        `uid` INT UNSIGNED NOT NULL,
+        `balance` DECIMAL(12,1) NOT NULL DEFAULT 200.0,
+        `total_bet` DECIMAL(12,1) NOT NULL DEFAULT 0.0,
+        `total_payout` DECIMAL(12,1) NOT NULL DEFAULT 0.0,
+        `play_count` INT UNSIGNED NOT NULL DEFAULT 0,
+        `updated_at` INT UNSIGNED NOT NULL DEFAULT 0,
+        PRIMARY KEY (`uid`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='plinko玩家账户';");
+    // plinko 逐球日志表
+    $db->query("CREATE TABLE IF NOT EXISTS `" . DB_PREFIX . "wx_plinko_games` (
+        `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `uid` INT UNSIGNED NOT NULL DEFAULT 0,
+        `bet` INT NOT NULL DEFAULT 0 COMMENT '下注金额',
+        `multiplier` DECIMAL(6,1) NOT NULL DEFAULT 1.0 COMMENT '落槽倍率',
+        `payout` INT NOT NULL DEFAULT 0 COMMENT '返奖金额',
+        `profit` INT NOT NULL DEFAULT 0 COMMENT '盈亏',
+        `risk` TINYINT NOT NULL DEFAULT 1 COMMENT '风险 0/1/2',
+        `rows` TINYINT NOT NULL DEFAULT 16 COMMENT '行数',
+        `bin` TINYINT NOT NULL DEFAULT -1 COMMENT '落槽索引',
+        `created_at` INT UNSIGNED NOT NULL DEFAULT 0,
+        PRIMARY KEY (`id`),
+        KEY `uid` (`uid`),
+        KEY `created_at` (`created_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='plinko逐球记录';");
 }
 
 /**
@@ -262,4 +299,7 @@ function callback_rm() {
     Storage::getInstance('wx_ddz')->deleteAllName('YES');
     Storage::getInstance('wx_mojang')->deleteAllName('YES');
     Storage::getInstance('wx_niuniu')->deleteAllName('YES');
+    Storage::getInstance('wx_plinko')->deleteAllName('YES');
+    $db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "wx_plinko_games`");
+    $db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "wx_plinko_accounts`");
 }

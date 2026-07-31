@@ -103,30 +103,30 @@ body{font-family:'Microsoft YaHei','PingFang SC','Helvetica Neue',sans-serif;
                  background:linear-gradient(135deg,#2D1A12 0%,#1A0E08 100%);
                  display:flex;flex-direction:column;justify-content:center;align-items:center;
                  z-index:3000;padding:20px;overflow-y:auto}
-.nn-login-container{background:rgba(30,15,8,0.85);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:32px;
-                    min-width:340px;max-width:420px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,0.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-.nn-login-subtitle{font-size:15px;text-align:center;margin-bottom:20px;color:rgba(255,255,255,0.7);font-weight:500}
+.nn-login-container{background:linear-gradient(135deg,#2D1A12 0%,#1E0F08 100%);border-radius:20px;padding:35px;
+                    min-width:340px;max-width:400px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,0.5),0 0 0 1px rgba(225,112,85,0.25);color:#f0e6dc;box-sizing:border-box}
+.nn-login-subtitle{font-size:15px;text-align:center;margin-bottom:25px;color:rgba(240,230,220,0.7);font-weight:500}
 .nn-login-tip{background:rgba(255,255,255,0.08);color:#fdcb6e;padding:12px;border-radius:8px;font-size:13px;margin-bottom:20px;line-height:1.5;border:1px solid rgba(255,255,255,0.06)}
 .nn-login-tip strong{display:block;margin-bottom:5px;color:#e17055}
-.btn-redirect-login{padding:14px;background:linear-gradient(135deg,#d63031 0%,#e17055 100%);color:white;
+.btn-redirect-login{padding:14px;background:linear-gradient(135deg,#27ae60 0%,#2ecc71 100%);color:white;
                     border:none;border-radius:10px;font-size:15px;cursor:pointer;transition:all 0.2s ease;
-                    text-decoration:none;display:block;text-align:center;min-height:44px;-webkit-appearance:none}
+                    text-decoration:none;display:block;text-align:center;min-height:44px;-webkit-appearance:none;appearance:none;box-shadow:0 4px 15px rgba(39,174,96,0.4)}
 .btn-redirect-login:active{transform:scale(0.98)}
 .btn-guest{padding:12px;background:transparent;color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:10px;
-            font-size:14px;cursor:pointer;transition:all 0.2s ease;margin-top:10px;min-height:44px;width:100%;-webkit-appearance:none}
+            font-size:14px;cursor:pointer;transition:all 0.2s ease;margin-top:10px;min-height:44px;width:100%;-webkit-appearance:none;appearance:none}
 .btn-guest:hover{background:rgba(255,255,255,0.08);color:#fff}
 
 /* 欢迎用户信息 */
 .welcome-user{display:flex;flex-direction:column;align-items:center;gap:10px;margin:0 0 14px 0}
 .welcome-avatar-wrap{position:relative;width:84px;height:84px}
-.welcome-avatar{width:84px;height:84px;border-radius:50%;border:3px solid rgba(225,112,85,0.8);object-fit:cover;background:#2D1A12}
-.welcome-avatar-placeholder{width:84px;height:84px;border-radius:50%;border:3px solid rgba(225,112,85,0.8);background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-size:36px}
-.welcome-name{font-size:22px;font-weight:700;color:#fdcb6e;text-shadow:0 0 15px rgba(253,203,110,0.4);letter-spacing:1px}
-.welcome-score{font-size:14px;color:rgba(255,255,255,0.65);margin-bottom:4px}
-.welcome-score strong{color:#ffd700;font-size:20px;font-weight:700}
-.welcome-buff-info{font-size:12px;color:rgba(255,255,255,0.5);margin-bottom:16px;text-align:center;min-height:18px}
+.welcome-avatar{width:84px;height:84px;border-radius:50%;border:3px solid #d63031;object-fit:cover;background:#2D1A12}
+.welcome-avatar-placeholder{width:84px;height:84px;border-radius:50%;border:3px solid #d63031;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-size:36px}
+.welcome-name{font-size:20px;font-weight:700;color:#fff}
+.welcome-score{font-size:14px;color:#bbb;margin-bottom:4px}
+.welcome-score strong{color:#f1c40f;font-size:18px;font-weight:700}
+.welcome-buff-info{font-size:12px;color:#aaa;margin-bottom:16px;text-align:center;min-height:18px}
 .welcome-start-btn{display:block;width:100%;margin:16px 0 12px;font-size:18px;padding:14px 40px;box-sizing:border-box;
-                   background:linear-gradient(135deg,#d63031 0%,#e17055 100%);border-radius:12px;border:none;color:#fff;font-weight:600;cursor:pointer;transition:all 0.2s;-webkit-appearance:none}
+                   background:linear-gradient(135deg,#e74c3c,#c0392b);border-radius:10px;border:none;color:#fff;font-weight:600;cursor:pointer;transition:all 0.2s;-webkit-appearance:none;appearance:none;box-shadow:0 4px 15px rgba(231,76,60,0.4)}
 .welcome-start-btn:hover{opacity:0.92;transform:translateY(-1px)}
 .welcome-start-btn:active{transform:scale(0.97)}
 .welcome-actions{display:flex;gap:10px;margin-top:4px}
@@ -250,8 +250,8 @@ body{font-family:'Microsoft YaHei','PingFang SC','Helvetica Neue',sans-serif;
           display:flex;justify-content:center;align-items:center;z-index:4000}
 .nn-modal-content{background:linear-gradient(135deg,#2D1A12,#1E0F08);border-radius:20px;
                   padding:25px;text-align:center;color:#fff;border:2px solid #ffd700;
-                  max-width:500px;width:90vw;min-width:300px;max-height:80vh;overflow-y:auto}
-.nn-modal-title{font-size:24px;font-weight:bold;margin-bottom:15px}
+                  width:90vw;max-width:500px;max-height:80vh;overflow-y:auto;box-sizing:border-box}
+.nn-modal-title{font-size:22px;font-weight:bold;text-align:center;margin-bottom:15px;color:#ffd700}
 .nn-modal-close{display:inline-block;margin-top:16px;padding:10px 28px;border:none;border-radius:25px;
                 background:#e17055;color:#fff;font-size:14px;cursor:pointer;-webkit-appearance:none}
 .nn-modal-list{text-align:left;max-height:300px;overflow-y:auto;margin-bottom:10px}
@@ -403,9 +403,9 @@ body{font-family:'Microsoft YaHei','PingFang SC','Helvetica Neue',sans-serif;
             <button class="welcome-start-btn" id="btnStartGame" onclick="startGame()">🎮 开始游戏</button>
 
             <div class="welcome-actions" id="welcomeActions">
-                <button class="welcome-action-btn" onclick="showShop()" style="background:linear-gradient(135deg,#f39c12,#e67e22)">商城</button>
-                <button class="welcome-action-btn" onclick="showInventory()" style="background:linear-gradient(135deg,#e17055,#d63031)">背包</button>
-                <button class="welcome-action-btn" onclick="showRecharge()" style="background:linear-gradient(135deg,#e74c3c,#c0392b)">充值</button>
+                <button class="welcome-action-btn" onclick="showShop()" style="background:linear-gradient(135deg,#f39c12,#e67e22);color:white;">🛒 商城</button>
+                <button class="welcome-action-btn" onclick="showInventory()" style="background:linear-gradient(135deg,#e17055,#d63031);color:white;">🎒 背包</button>
+                <button class="welcome-action-btn" onclick="showRecharge()" style="background:linear-gradient(135deg,#e74c3c,#c0392b);color:white;">💎 充值</button>
             </div>
 
             <!-- 公告与最近更新 -->
@@ -1112,10 +1112,13 @@ function startReveal() {
 
 async function finishGame(totalChange, detailHtml, aiChanges) {
     // 应用积分加成卡倍率
+    var originalChangeBeforeBuff = 0;
+    var buffApplied = false;
     if (NN_ACTIVE_BUFF_MULT > 1 && totalChange > 0) {
-        const originalChange = totalChange;
+        originalChangeBeforeBuff = totalChange;
         totalChange = Math.round(totalChange * NN_ACTIVE_BUFF_MULT);
-        console.log('[斗牛] 积分加成卡: ' + originalChange + ' × ' + NN_ACTIVE_BUFF_MULT + ' = ' + totalChange);
+        buffApplied = true;
+        console.log('[斗牛] 积分加成卡: ' + originalChangeBeforeBuff + ' × ' + NN_ACTIVE_BUFF_MULT + ' = ' + totalChange);
     }
     console.log('[斗牛] finishGame() totalChange=' + totalChange + ', aiChanges=' + JSON.stringify(aiChanges) + ', gameInProgress=' + gameInProgress + ' → false');
     gameInProgress = false;
@@ -1147,10 +1150,17 @@ async function finishGame(totalChange, detailHtml, aiChanges) {
     document.getElementById('phaseReveal').style.display = 'none';
     document.getElementById('phaseResult').style.display = 'block';
     document.querySelector('.nn-my-area').classList.add('hidden');
-    document.getElementById('finalResult').textContent = totalChange > 0 ? '🎉 赢钱啦！' : (totalChange < 0 ? '😅 输了' : '🤝 保本');
+    document.getElementById('finalResult').textContent = totalChange > 0 ? '🎉 胜利啦！' : (totalChange < 0 ? '😅 输了' : '🤝 保本');
     document.getElementById('finalScore').textContent = (totalChange > 0 ? '+' : '') + totalChange + ' 分';
     document.getElementById('finalScore').style.color = totalChange > 0 ? '#2ecc71' : (totalChange < 0 ? '#e74c3c' : '#aaa');
-    document.getElementById('finalDetail').textContent = '庄家牌型：' + playerNiuType.name + ' ×' + playerNiuType.multiplier;
+
+    // 构建结算明细：庄家牌型 + 积分卡倍率计算过程
+    var detailHtml2 = '庄家牌型：' + playerNiuType.name + ' ×' + playerNiuType.multiplier;
+    if (buffApplied) {
+        detailHtml2 += '<div style="margin-top:6px;color:#fdcb6e">⚡ 基础分 ' + originalChangeBeforeBuff + ' × 积分卡倍率 ' + NN_ACTIVE_BUFF_MULT + ' = <b>' + totalChange + ' 分</b></div>';
+    }
+    document.getElementById('finalDetail').innerHTML = detailHtml2;
+
     document.getElementById('finalDetailList').style.display = 'none';
     const navScore = (gameData.current_score || 0) + totalChange;
     document.getElementById('navScoreVal').textContent = navScore;
@@ -1183,6 +1193,8 @@ function backToWelcome() {
         document.getElementById('welcomeScore').textContent = gameData.current_score;
         document.getElementById('navScoreVal').textContent = gameData.current_score;
     }
+    // 刷新积分卡剩余局数（后端每次结算已 used+1，需重新拉取）
+    if (currentUser) loadBuffInfo();
 }
 
 function returnToLobby() {
@@ -1196,6 +1208,8 @@ function returnToLobby() {
         document.getElementById('welcomeScore').textContent = gameData.current_score;
         document.getElementById('navScoreVal').textContent = gameData.current_score;
     }
+    // 刷新积分卡剩余局数
+    if (currentUser) loadBuffInfo();
 }
 
 function getTypeEmoji(type) {
@@ -1462,7 +1476,6 @@ const InventoryManager = {
                 body.innerHTML = '<div style="text-align:center;color:#aaa;padding:30px;">背包暂无道具</div>';
                 return;
             }
-            // 格式转换：确保 inv_id 字段
             this.allItems = data.data.map(item => ({
                 inv_id: item.inv_id || item.id,
                 item_id: item.item_id,

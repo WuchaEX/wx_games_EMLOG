@@ -1,6 +1,6 @@
 # 🎮 棋牌大厅 (wx_games)
 
-> 一款为 **Emlog CMS** 打造的 **棋牌游戏合集** 插件。一站集成多款 H5 棋牌游戏，当前包含 **H5斗地主**、**H5国标麻将** 和 **H5斗牛**，可随时扩展。
+> 一款为 **Emlog CMS** 打造的 **棋牌游戏合集** 插件。一站集成多款 H5 游戏，当前包含 **H5斗地主**、**H5国标麻将**、**H5斗牛** 和 **H5弹珠台**，可随时扩展。
 >
 > 作者：**舞嗏** (WuchaEX) | 演示站：https://www.20090729.cn
 
@@ -13,6 +13,7 @@
 | ♠ **H5斗地主** | 经典斗地主，AI 对战，双货币商城，道具装扮 | ✅ 已集成 |
 | 🀄 **H5国标麻将** | 国标麻将，8番起胡，完整番型计算引擎 | ✅ 已集成 |
 | 🐂 **H5斗牛** | 经典斗牛（牛牛）玩法，6 AI 对战，押注系统 | ✅ 已集成 |
+| 🎱 **H5弹珠台** | Plinko 物理弹珠，matter.js 引擎，多风险/行数，商城 + 逐球记录 | ✅ 已集成 |
 
 > 后续游戏可放入 `games/` 子目录，在 `wx_games.php` 的 `$wx_games_list` 中注册即可。
 
@@ -71,6 +72,21 @@
 | 🏆 **排行榜** | 支持 AI 积分排行，AI 昵称/头像后台可配 |
 | 🛒 **道具商城** | 昵称变色/特效等装扮道具（与 DDZ/MJ 通用） |
 
+## 🎱 H5弹珠台 — 功能特性
+
+| 功能 | 说明 |
+|------|------|
+| 🎱 **物理弹珠** | matter.js 真实物理引擎，铜钉阵 + 弹性碰撞 |
+| 🎯 **多风险模式** | 低/中/高 三档风险，×5 ~ ×1000 倍率体系 |
+| 🔢 **可调行数** | 8-16 行钉阵，行数越多极端倍率越高 |
+| ⚡ **自动投注** | 可调间隔（500/750/1000ms），快速验证概率分布 |
+| 💰 **独立弹珠币** | 不与棋牌积分互通，防通胀隔离 |
+| 🛒 **商城系统** | 币包 + 弹珠皮肤 + 钉阵主题 + 通用道具（昵称变色/称号等） |
+| 📊 **逐球记录** | `wx_plinko_games` 表记录每球投入/倍率/盈亏，可回溯 |
+| 📜 **弹珠流水** | 前台实时查看投球历史（难度/行数/下注/获奖/盈亏） |
+| 🏆 **排行榜** | 按弹珠余额排行 |
+| 🎨 **深色铜金主题** | 移动端适配，12秒兜底结算防卡球丢钱 |
+
 ---
 
 ## 🏗️ 文件结构
@@ -81,7 +97,6 @@ wx_games/
 ├── wx_games_callback.php         # 生命周期：数据库建表 + 配置初始化
 ├── wx_games_setting.php          # 后台设置页：Tab导航 + 游戏管理 + 数据看板
 ├── wx_games_show.php             # 前台游戏大厅
-├── wx_games_common.php           # 共享工具函数（预留）
 ├── wx_games_ddz_fn.php           # 斗地主：函数定义 + AJAX路由 + 信号处理
 ├── wx_games_ddz_admin.php        # 斗地主：后台设置（商城管理/积分管理等）
 ├── wx_games_ddz_show.php         # 斗地主：前台页面（HTML+JS+CSS）
@@ -91,26 +106,38 @@ wx_games/
 ├── wx_games_niuniu_fn.php        # 斗牛：函数定义 + AJAX路由 + 信号处理
 ├── wx_games_niuniu_admin.php     # 斗牛：后台设置
 ├── wx_games_niuniu_show.php      # 斗牛：前台页面
+├── wx_games_plinko_fn.php        # 弹珠台：函数定义 + AJAX路由 + 信号处理
+├── wx_games_plinko_admin.php     # 弹珠台：后台设置（基本/积分/商城三Tab）
+├── wx_games_plinko_show.php      # 弹珠台：前台页面（iframe容器 + 存档同步 + 商城/背包）
 ├── css/                          # 大厅样式
 └── games/
     ├── ddz/css/ js/ assets/      # 斗地主静态资源
     ├── mojang/css/ js/ assets/   # 麻将静态资源
-    └── niuniu/css/ js/ assets/   # 斗牛静态资源
+    ├── niuniu/css/ assets/       # 斗牛静态资源（JS内联于PHP）
+    └── plinko/                   # 弹珠台静态资源（index.html + matter.min.js）
 ```
 
 ---
 
-## 🗄️ 数据库（7张表）
+## 🗄️ 数据库
 
+### 统一表（5张）
 | 表 | 用途 | 说明 |
 |----|------|------|
 | `wx_games_scores` | 用户积分/战绩 | 统一存储，`game` 字段区分游戏（ddz/mj/niuniu） |
 | `wx_games_logs` | 积分变动日志 | 全游戏共享流水表 |
 | `wx_games_shop_items` | 商城商品 | `is_global` 标记通用道具（跨游戏可用） |
-| `wx_ddz_games` | 斗地主游戏记录 | 防逃跑 + 历史对局 |
-| `wx_niuniu_games` | 斗牛游戏记录 | 防逃跑 + 历史对局 |
 | `wx_games_user_items` | 玩家背包 | 统一存储，`game` 字段区分归属游戏 |
-| `wx_games_mall_logs` | 商城消费记录 | 全游戏统一消费流水 |
+| `wx_games_scores` | 用户积分/战绩 | 统一存储，`game` 字段区分游戏 |
+
+### 游戏特有表（4张）
+| 表 | 用途 |
+|----|------|
+| `wx_ddz_games` | 斗地主游戏记录（防逃跑） |
+| `wx_mojang_games` | 麻将游戏记录（番型记录） |
+| `wx_niuniu_games` | 斗牛游戏记录（防逃跑） |
+| `wx_plinko_accounts` | 弹珠台玩家账户（balance/total_bet/total_payout/play_count） |
+| `wx_plinko_games` | 弹珠台逐球记录（bet/multiplier/payout/profit/risk/rows/bin） |
 
 ---
 
@@ -122,13 +149,24 @@ wx_games/
 | `&game=ddz` | 进入斗地主 |
 | `&game=mj` | 进入麻将 |
 | `&game=niuniu` | 进入斗牛 |
+| `&game=plinko` | 进入弹珠台 |
 | `&ddz_action=xxx` | 斗地主 AJAX |
 | `&mj_action=xxx` | 麻将 AJAX |
 | `&niuniu_action=xxx` | 斗牛 AJAX |
+| `&plinko_action=xxx` | 弹珠台 AJAX |
 
 ---
 
 ## 📜 更新日志
+
+### v1.2.0 — 2026-08-01
+- 🎱 新增 **H5弹珠台**（Plinko 物理弹珠游戏）
+- 🧮 matter.js 物理引擎，多风险/多行数/自动投注
+- 🗄️ 新增 `wx_plinko_accounts` / `wx_plinko_games` 两张表
+- 🛒 弹珠台商城（币包 + 皮肤 + 主题 + 通用道具互通）
+- 🔧 大量 bug 修复：跨游戏道具激活、背包去重、积分 log 同步、UIN 溢出
+- 🎨 四游戏欢迎页/导航栏/商城弹窗样式统一（ddz 基准）
+- 🧹 精简代码：删除 SvelteKit 源码（30文件）、死代码 buy_coin_pack
 
 ### v1.1.0 — 2026-07-12
 - 🐂 新增 **H5斗牛** 游戏（经典斗牛玩法）

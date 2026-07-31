@@ -618,17 +618,27 @@ function wx_mojang_api_get_inventory($uid) {
     $db = Database::getInstance();
     $table_inv   = DB_PREFIX . 'wx_games_user_items';
     $table_items = DB_PREFIX . 'wx_games_shop_items';
-    $result = $db->query("SELECT i.*, s.`name`, s.`icon`, s.`item_type`, s.`effect_data`
+    $result = $db->query("SELECT MIN(i.`id`) AS inv_id, i.`item_id`,
+               SUM(CAST(i.`quantity` AS SIGNED) - CAST(i.`used` AS SIGNED)) AS qty,
+               MAX(i.`is_active`) AS is_active, MAX(i.`game`) AS from_game,
+               MAX(s.`name`) AS name, MAX(s.`icon`) AS icon,
+               MAX(s.`item_type`) AS item_type, MAX(s.`effect_data`) AS effect_data,
+               MAX(s.`is_global`) AS is_global
         FROM `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
-        WHERE i.`game` = 'mj' AND i.`uid` = $uid AND i.`quantity` > i.`used` ORDER BY i.`purchased_at` DESC");
+        WHERE i.`uid` = $uid AND i.`quantity` > i.`used`
+          AND (i.`game` = 'mj' OR s.`is_global` = 1)
+        GROUP BY i.`item_id`
+        ORDER BY MAX(i.`is_active`) DESC, MAX(i.`purchased_at`) DESC");
     $items = [];
     while ($row = $db->fetch_array($result)) {
         $expired = $row['expires_at'] && $row['expires_at'] !== '0000-00-00 00:00:00' && strtotime($row['expires_at']) < time();
         if ($expired) continue;
-        $items[] = ['inv_id' => (int)$row['id'], 'item_id' => (int)$row['item_id'],
+        $items[] = ['inv_id' => (int)$row['inv_id'], 'item_id' => (int)$row['item_id'],
             'name' => $row['name'], 'icon' => $row['icon'], 'item_type' => $row['item_type'],
             'effect_data' => stripslashes($row['effect_data']),
-            'quantity' => max(0, (int)$row['quantity'] - (int)$row['used']), 'is_active' => (int)$row['is_active']];
+            'is_global' => (int)$row['is_global'],
+            'from_game' => $row['from_game'],
+            'quantity' => (int)$row['qty'], 'is_active' => (int)$row['is_active']];
     }
     wx_mojang_ok(['items' => $items]);
 }
@@ -730,7 +740,7 @@ function wx_mojang_api_use_item($uid) {
         if (in_array($item_type, $global_types, true)) {
             $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `uid` = $uid AND `item_id` = " . intval($row['item_id']));
         } else {
-            $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `game` = 'mj' AND `id` = " . intval($row['id']));
+            $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `id` = " . intval($row['id']));
         }
         wx_mojang_ok(['msg' => '已激活', 'item_type' => $item_type, 'effect_data' => $row['effect_data']]);
     } elseif ($item_type === 'score_buff') {

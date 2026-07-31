@@ -68,6 +68,16 @@ $wx_games_list = [
         'show_file'  => 'wx_games_niuniu_show.php',
         'settings'   => ['title', 'guest_play', 'ai_names', 'notice', 'base_bet'],
     ],
+    'plinko' => [
+        'name'       => 'H5弹珠台',
+        'desc'       => '经典弹珠台，投球赢大奖，H5专属',
+        'icon'       => '🎱',
+        'action_key' => 'plinko_action',
+        'signal_key' => 'wxplinko_signal',
+        'fn_file'    => __DIR__ . '/wx_games_plinko_fn.php',
+        'show_file'  => 'wx_games_plinko_show.php',
+        'settings'   => ['title', 'guest_play', 'notice'],
+    ],
 ];
 
 // ============================================================
@@ -86,9 +96,10 @@ if (!empty($wx_games_game) && isset($wx_games_list[$wx_games_game])) {
         // 调用游戏对应的信号处理函数 —— 各游戏 fn.php 需提供：
         // wx_{game}_handle_signal($signal)
         $handler_map = [
-            'ddz'   => 'wx_ddz_handle_signal',
-            'mj'    => 'wx_mojang_handle_signal',
-            'niuniu'=> 'wx_niuniu_handle_signal',
+            'ddz'    => 'wx_ddz_handle_signal',
+            'mj'     => 'wx_mojang_handle_signal',
+            'niuniu' => 'wx_niuniu_handle_signal',
+            'plinko' => 'wx_plinko_handle_signal',
         ];
         $handler = $handler_map[$wx_games_game] ?? '';
         if (function_exists($handler)) {
@@ -116,9 +127,10 @@ if (!empty($wx_games_game) && isset($wx_games_list[$wx_games_game])) {
         require_once $g['fn_file'];
         // 调用游戏对应的 AJAX 路由函数
         $router_map = [
-            'ddz'   => 'wx_ddz_route_ajax',
-            'mj'    => 'wx_mojang_route_ajax',
-            'niuniu'=> 'wx_niuniu_route_ajax',
+            'ddz'    => 'wx_ddz_route_ajax',
+            'mj'     => 'wx_mojang_route_ajax',
+            'niuniu' => 'wx_niuniu_route_ajax',
+            'plinko' => 'wx_plinko_route_ajax',
         ];
         $router = $router_map[$wx_games_game] ?? '';
         if (function_exists($router)) {
@@ -153,6 +165,8 @@ function wx_games_index_head() {
         echo '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">' . "\n";
     } elseif ($game === 'niuniu') {
         echo '<link rel="stylesheet" href="' . WX_GAMES_URL . 'games/niuniu/css/style.css?v=1.0.0">' . "\n";
+        echo '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">' . "\n";
+    } elseif ($game === 'plinko') {
         echo '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">' . "\n";
     }
 }

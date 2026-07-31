@@ -23,6 +23,9 @@ if ($wxg_game === 'ddz') {
 } elseif ($wxg_game === 'niuniu') {
     require_once __DIR__ . '/wx_games_niuniu_fn.php';
     require_once __DIR__ . '/wx_games_niuniu_admin.php';
+} elseif ($wxg_game === 'plinko') {
+    require_once __DIR__ . '/wx_games_plinko_fn.php';
+    require_once __DIR__ . '/wx_games_plinko_admin.php';
 }
 
 // ============================================================
@@ -68,6 +71,12 @@ function plugin_setting_view() {
             wx_niuniu_admin_render();
         } else {
             echo '<div class="alert alert-danger">niuniu admin 加载失败</div>';
+        }
+    } elseif ($game === 'plinko') {
+        if (function_exists('wx_plinko_admin_render')) {
+            wx_plinko_admin_render();
+        } else {
+            echo '<div class="alert alert-danger">plinko admin 加载失败</div>';
         }
     } else {
         wxg_hub_view();
@@ -182,7 +191,7 @@ function wxg_hub_view() {
                     $max_score = (int)($r['ms'] ?? 0);
                 } catch (\Throwable $e) {}
                 try {
-                    if ($key === 'ddz' || $key === 'niuniu') {
+                    if ($key === 'ddz' || $key === 'niuniu' || $key === 'plinko') {
                         $r = $db->once_fetch_array("SELECT COUNT(*) AS c FROM `$games_table` WHERE `created_at` > $yesterday");
                         $today_active = (int)($r['c'] ?? 0);
                         $r = $db->once_fetch_array("SELECT COUNT(*) AS c FROM `$games_table` WHERE `created_at` > $week_ago");

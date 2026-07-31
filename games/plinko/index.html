@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Plinko 弹珠台</title>
+<script src="matter.min.js"></script>
+<script>
+if(typeof Matter==='undefined'){document.write('<script src="https://unpkg.com/matter-js@0.19.0/build/matter.min.js"><\/script>');}
+</script>
+<style>
+:root{
+  --bg:#15120f; --panel:#1e1b18; --border:#332f2a;
+  --gold:#e2b04a; --gold-dim:#b8935a; --copper:#cd7f32;
+  --text:#e8ddd0; --muted:#8f867a; --red:#e0554a; --green:#4aa36b;
+  --pill-bg:rgba(255,255,255,0.06); --pill-border:rgba(255,255,255,0.08);
+  --shadow:0 4px 32px rgba(0,0,0,.45);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans SC',sans-serif;
+  display:flex; justify-content:center; align-items:center; min-height:100vh;
+  overflow-x:hidden; overflow-y:auto;
+}
+main{
+  display:flex; flex-direction:column; align-items:center; gap:0;
+  padding:24px 16px; max-width:840px; width:100%;
+}
+
+/* ---- canvas wrapper ---- */
+.canvas-shell{
+  position:relative; background:var(--panel); border-radius:14px;
+  box-shadow:var(--shadow); overflow:hidden; width:100%; max-width:760px;
+}
+canvas{display:block;width:100%;height:auto;aspect-ratio:760/570}
+.canvas-shell::after{
+  content:''; position:absolute; inset:0; pointer-events:none;
+  border-radius:14px; box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+/* ---- top bar ---- */
+.bar-row1,.bar-row2{display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:center;
+  width:100%; max-width:760px;}
+.bar-row1{padding:14px 0 4px}
+.bar-row2{padding:0 0 14px}
+}
+.pill{
+  display:flex; align-items:center; gap:6px;
+  background:var(--pill-bg); border:1px solid var(--pill-border);
+  border-radius:28px; padding:5px 14px; font-size:13px; white-space:nowrap;
+}
+.pill label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.pill select,.pill input{
+  background:transparent; border:none; color:var(--text);
+  font-size:13px; font-weight:600; outline:none; padding:2px 0;
+}
+.pill select option{background:var(--panel);color:var(--text)}
+.pill input{width:44px;text-align:center}
+.pill input::-webkit-inner-spin-button{opacity:0}
+.balance-pill{background:linear-gradient(135deg,rgba(226,176,74,.15),rgba(205,127,50,.1));border-color:rgba(226,176,74,.2)}
+.balance-pill strong{color:var(--gold);font-size:16px;font-weight:700;min-width:50px;text-align:center}
+
+/* ---- buttons ---- */
+.btn{
+  border:none; border-radius:26px; padding:10px 22px; font-size:14px; font-weight:600;
+  cursor:pointer; transition:all .15s; font-family:inherit;
+}
+.btn:active{transform:scale(.96)}
+.btn:disabled{opacity:.35;cursor:default;transform:none}
+.btn-primary{background:linear-gradient(135deg,#e2b04a,#cd7f32);color:#15120f}
+.btn-primary:hover:not(:disabled){box-shadow:0 0 18px rgba(226,176,74,.3)}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted)}
+.btn-ghost:hover{color:var(--text);border-color:var(--gold-dim)}
+.btn-sm{padding:6px 14px;font-size:12px;border-radius:20px}
+.btn-adj{background:rgba(226,176,74,.12);border:1px solid rgba(226,176,74,.2);color:var(--gold);font-size:13px;font-weight:700;width:28px;height:24px;border-radius:6px;cursor:pointer;line-height:1;padding:0;transition:all .15s}
+.btn-adj:hover{background:rgba(226,176,74,.25)}
+.btn-adj:active{transform:scale(.9)}
+.btn-adj:disabled{opacity:.25;cursor:default;transform:none}
+
+/* ---- auto toggle ---- */
+.toggle-wrap{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--muted)}
+.auto-interval-select{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:17px;padding:0 10px;height:34px;font-size:12px;cursor:pointer;outline:none;-webkit-appearance:none;appearance:none}
+.toggle{width:38px;height:22px;border-radius:11px;background:var(--border);position:relative;cursor:pointer;transition:background .25s}
+.toggle.active{background:var(--gold)}
+.toggle::after{content:'';width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:3px;left:3px;transition:left .25s}
+.toggle.active::after{left:19px}
+
+/* ---- log ---- */
+.log{
+  width:100%; max-width:760px; max-height:180px; overflow-y:auto;
+  background:var(--panel); border-radius:12px; padding:2px 0; margin-top:14px;
+  border:1px solid var(--border); font-size:12px;
+  scrollbar-width:thin; scrollbar-color:var(--border) transparent;
+}
+.log .row{display:flex;justify-content:space-between;align-items:center;padding:7px 14px;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px}
+.log .row:last-child{border-bottom:none}
+.log .row-head{color:#bbb;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.log .profit{color:var(--green)}.log .loss{color:var(--red)}.log .even{color:var(--muted)}
+
+/* ---- bin payout overlay ---- */
+.bin-labels{
+  display:flex; margin:-6px auto 0; max-width:760px; width:100%;
+  height:42px; background:var(--panel); border-radius:0 0 14px 14px;
+  box-shadow:var(--shadow);
+}
+.bin-label-item{
+  flex:1; display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:700; color:#fff; position:relative;
+  border-right:1px solid rgba(0,0,0,.2); text-shadow:0 1px 4px rgba(0,0,0,.5);
+}
+.bin-label-item:last-child{border-right:none}
+
+/* ---- last win flash ---- */
+@keyframes flashGold{0%{box-shadow:0 0 0 rgba(226,176,74,0)}50%{box-shadow:0 0 28px rgba(226,176,74,.5)}100%{box-shadow:0 0 0 rgba(226,176,74,0)}}
+.flash{animation:flashGold .6s ease-out}
+
+@media(max-width:780px){
+  .bar-row1,.bar-row2{gap:6px}
+  .pill{padding:4px 10px;font-size:12px}
+  .pill label{font-size:10px}
+  .bin-labels{height:32px}
+  .bin-label-item{font-size:11px}
+}
+</style>
+</head>
+<body>
+<main>
+  <div class="bar bar-row1">
+    <div class="pill balance-pill"><span style="font-size:18px">💎</span><strong id="balanceDisplay">200</strong></div>
+    <button class="btn btn-primary" id="dropBtn" style="height:34px;padding:0 18px">🎱 投放弹珠</button>
+    <div class="toggle-wrap" id="toggleWrap"><div class="toggle" id="toggleBtn"></div> 自动</div>
+    <select id="autoInterval" class="auto-interval-select" title="自动投放间隔">
+      <option value="500">500ms</option>
+      <option value="750">750ms</option>
+      <option value="1000" selected>1000ms</option>
+    </select>
+  </div>
+  <div class="bar bar-row2">
+    <div class="pill"><label>下注</label><input type="number" id="betAmount" value="1" min="1" max="10000" style="width:52px"><button class="btn-adj" id="betHalf">½</button><button class="btn-adj" id="betDouble">×2</button></div>
+    <div class="pill"><label>风险</label><select id="riskSelect"><option value="0">🟢 低</option><option value="1" selected>🟡 中</option><option value="2">🔴 高</option></select></div>
+    <div class="pill"><label>行数</label><select id="rowSelect"><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16" selected>16</option></select></div>
+    <button class="btn btn-ghost btn-sm" id="clearLog">清记录</button>
+  </div>
+
+  <div class="canvas-shell" id="canvasShell">
+    <canvas id="plinkoCanvas" width="760" height="570"></canvas>
+  </div>
+  <div class="bin-labels" id="binLabels"></div>
+
+  <button class="btn btn-primary" id="dropBtn" style="margin-top:14px;display:none">🎱 投放弹珠</button>
+  <div class="log" id="logContainer"></div>
+</main>
+
+<script>
+// ============ 常量 (from game.ts) ============
+const ROW_COUNTS = [8,9,10,11,12,13,14,15,16];
+const RISK_NAMES = ['低','中','高'];
+
+const BIN_PAYOUTS = {
+  8: {0:[[5.6,2.1,1.1,1,0.5,1,1.1,2.1,5.6],[13,3,1.3,0.7,0.4,0.7,1.3,3,13],[29,4,1.5,0.3,0.2,0.3,1.5,4,29]]},
+  9: {0:[[5.6,2,1.6,1,0.7,0.7,1,1.6,2,5.6],[18,4,1.7,0.9,0.5,0.5,0.9,1.7,4,18],[43,7,2,0.6,0.2,0.2,0.6,2,7,43]]},
+  10:{0:[[8.9,3,1.4,1.1,1,0.5,1,1.1,1.4,3,8.9],[22,5,2,1.4,0.6,0.4,0.6,1.4,2,5,22],[76,10,3,0.9,0.3,0.2,0.3,0.9,3,10,76]]},
+  11:{0:[[8.4,3,1.9,1.3,1,0.7,0.7,1,1.3,1.9,3,8.4],[24,6,3,1.8,0.7,0.5,0.5,0.7,1.8,3,6,24],[120,14,5.2,1.4,0.4,0.2,0.2,0.4,1.4,5.2,14,120]]},
+  12:{0:[[10,3,1.6,1.4,1.1,1,0.5,1,1.1,1.4,1.6,3,10],[33,11,4,2,1.1,0.6,0.3,0.6,1.1,2,4,11,33],[170,24,8.1,2,0.7,0.2,0.2,0.2,0.7,2,8.1,24,170]]},
+  13:{0:[[8.1,4,3,1.9,1.2,0.9,0.7,0.7,0.9,1.2,1.9,3,4,8.1],[43,13,6,3,1.3,0.7,0.4,0.4,0.7,1.3,3,6,13,43],[260,37,11,4,1,0.2,0.2,0.2,0.2,1,4,11,37,260]]},
+  14:{0:[[7.1,4,1.9,1.4,1.3,1.1,1,0.5,1,1.1,1.3,1.4,1.9,4,7.1],[58,15,7,4,1.9,1,0.5,0.2,0.5,1,1.9,4,7,15,58],[420,56,18,5,1.9,0.3,0.2,0.2,0.2,0.3,1.9,5,18,56,420]]},
+  15:{0:[[15,8,3,2,1.5,1.1,1,0.7,0.7,1,1.1,1.5,2,3,8,15],[88,18,11,5,3,1.3,0.5,0.3,0.3,0.5,1.3,3,5,11,18,88],[620,83,27,8,3,0.5,0.2,0.2,0.2,0.2,0.5,3,8,27,83,620]]},
+  16:{0:[[16,9,2,1.4,1.4,1.2,1.1,1,0.5,1,1.1,1.2,1.4,1.4,2,9,16],[110,41,10,5,3,1.5,1,0.5,0.3,0.5,1,1.5,3,5,10,41,110],[1000,130,26,9,4,2,0.2,0.2,0.2,0.2,0.2,2,4,9,26,130,1000]]}
+};
+
+function getPayout(rowCount, risk, binIndex) {
+  return (BIN_PAYOUTS[rowCount]?.[0]?.[risk]?.[binIndex]) ?? 1;
+}
+
+// bin color interpolation (from original game)
+function interpolateRGB(a, b, steps) {
+  const r = []; for (let i = 0; i < steps; ++i) {
+    const t = i / (steps - 1);
+    r.push({r: Math.round(a.r + (b.r - a.r) * t), g: Math.round(a.g + (b.g - a.g) * t), b: Math.round(a.b + (b.b - a.b) * t)});
+  }
+  return r;
+}
+
+// ============ 状态 ============
+let balance = parseFloat(localStorage.getItem('plinko_balance')||'200');
+if(balance<=0)balance=200;
+// 存档恢复（由父页面 wx_games_plinko_show.php 注入）
+(function(){var r=localStorage.getItem('plinko_restore');if(r){try{var d=JSON.parse(r);if(d.balance>0)balance=d.balance;}catch(e){}localStorage.removeItem('plinko_restore');}})();
+let betAmount=1,risk=1,rowCount=16,autoBet=false,autoTimer=null,logEntries=[],ballBetMap={};
+// 统计追踪
+let plinkoTotalBet = parseInt(localStorage.getItem('plinko_total_bet')||'0',10)||0;
+let plinkoTotalPayout = parseFloat(localStorage.getItem('plinko_total_payout')||'0')||0;
+let plinkoBallCount = 0;
+let plinkoPlayCount = parseInt(localStorage.getItem('plinko_play_count')||'0',10)||0;
+
+function getActiveBallCount(){return Object.keys(ballBetMap).length}
+function getMinBet(){return Math.max(1, Math.ceil(balance * 0.01));}
+function lockSettings(lock){
+  betInput.disabled=lock;riskSelect.disabled=lock;rowSelect.disabled=lock;dropBtn.disabled=lock;
+  betHalf.disabled=lock;betDouble.disabled=lock;
+}
+
+// ============ DOM ============
+const canvas=document.getElementById('plinkoCanvas');
+const W=760,H=570;
+const balDisplay=document.getElementById('balanceDisplay');
+const betInput=document.getElementById('betAmount');
+const riskSelect=document.getElementById('riskSelect');
+const rowSelect=document.getElementById('rowSelect');
+const dropBtn=document.getElementById('dropBtn');
+const clearBtn=document.getElementById('clearLog');
+const logContainer=document.getElementById('logContainer');
+const binLabels=document.getElementById('binLabels');
+const toggleBtn=document.getElementById('toggleBtn');
+const toggleWrap=document.getElementById('toggleWrap');
+const canvasShell=document.getElementById('canvasShell');
+
+function updateUI(){
+  balDisplay.textContent=balance%1===0?balance:balance.toFixed(1);
+  // 实时同步到 localStorage（parent 的 save 读取需要）
+  localStorage.setItem('plinko_balance',balance);
+  localStorage.setItem('plinko_total_bet',plinkoTotalBet);
+  localStorage.setItem('plinko_total_payout',plinkoTotalPayout);
+  localStorage.setItem('plinko_play_count',plinkoPlayCount);
+  // 实时推送给父页面（欢迎卡片和导航栏秒级刷新）
+  try{parent.postMessage({type:'plinko_balance',balance:balance},'*');}catch(e){}
+  betAmount=parseInt(betInput.value,10)||1;
+  const minBet=getMinBet();
+  if(betAmount<minBet) { betInput.value=minBet; betAmount=minBet; }
+  if(betAmount>balance&&balance>0) betInput.value=Math.floor(balance);
+  risk=parseInt(riskSelect.value,10);
+  rowCount=parseInt(rowSelect.value,10);
+  renderBinLabels();
+}
+
+function addLog(riskName,rowCount,payoutMult,bet,profit,binIdx,balanceAfter){
+  plinkoBallCount++;
+  const f = n => {n=Number(n)||0; return n.toFixed(1);};
+  logEntries.unshift({
+    riskName,rowCount,
+    bet:f(bet), payoutMult:f(payoutMult),
+    profit:f(profit)
+  });
+  if(logEntries.length>50)logEntries.length=50;
+  renderLog();
+}
+function renderLog(){
+  logContainer.innerHTML=logEntries.map(e=>{
+    const cls=+e.profit>0?'profit':(+e.profit<0?'loss':'even');
+    const sign=+e.profit>0?'+':'';
+    return `<div class="row">
+      <div class="row-head">难度：${e.riskName} &nbsp;|&nbsp; 行数：${e.rowCount} &nbsp;|&nbsp; 下注：${e.bet} &nbsp;|&nbsp; 获奖：${e.payoutMult}</div>
+      <span class="${cls}" style="font-size:14px;font-weight:700">${sign}${e.profit}</span>
+    </div>`;
+  }).join('');
+}
+
+// bin labels below canvas
+function renderBinLabels(){
+  const payouts=BIN_PAYOUTS[rowCount]?.[0]?.[risk]||[];
+  const count=payouts.length;
+  const red={r:190,g:40,b:40},yellow={r:210,g:170,b:30};
+  const colors=interpolateRGB(red,yellow,Math.ceil(count/2));
+  const allColors=[...colors,...colors.toReversed().slice(count%2===0?0:1)];
+  binLabels.innerHTML=allColors.map((c,i)=>{
+    return `<div class="bin-label-item" style="background:rgb(${c.r},${c.g},${c.b})">×${payouts[i]}</div>`;
+  }).join('');
+}
+
+// ============ Matter.js 引擎 ============
+const PADDING_X=52,PADDING_TOP=36,PADDING_BOTTOM=28;
+const PIN_CAT=0x0001,BALL_CAT=0x0002;
+const frictionAirByRows={8:0.0395,9:0.041,10:0.038,11:0.0355,12:0.0414,13:0.0437,14:0.0401,15:0.0418,16:0.0364};
+let engine,render,runner,pins=[],walls=[],sensor,pinsLastRowX=[];
+
+function createEngine(){
+  if(engine){Matter.Render.stop(render);Matter.Runner.stop(runner);Matter.World.clear(engine.world,false);Matter.Engine.clear(engine)}
+  engine=Matter.Engine.create({timing:{timeScale:1}});
+  render=Matter.Render.create({engine,canvas,options:{width:W,height:H,background:'#1a1612',wireframes:false}});
+  runner=Matter.Runner.create();
+  pins=[];pinsLastRowX=[];walls=[];ballBetMap={};
+  placePinsAndWalls();
+  sensor=Matter.Bodies.rectangle(W/2,H,W,10,{isSensor:true,isStatic:true,render:{visible:false}});
+  Matter.Composite.add(engine.world,sensor);
+  Matter.Events.on(engine,'collisionStart',function(ev){
+    ev.pairs.forEach(p=>{const a=p.bodyA,b=p.bodyB;if(a===sensor)handleBin(b);else if(b===sensor)handleBin(a);});
+  });
+  Matter.Events.on(engine,'afterUpdate',function(){
+    Matter.Composite.allBodies(engine.world).forEach(b=>{
+      if(b.collisionFilter && b.collisionFilter.category===BALL_CAT && b.position.y > H+30){
+        if(ballBetMap[b.id]!==undefined) handleBin(b);
+      }
+    });
+  });
+  Matter.Render.run(render);Matter.Runner.run(runner,engine);
+}
+
+function placePinsAndWalls(){
+  if(pins.length){Matter.Composite.remove(engine.world,pins);pins=[]}
+  if(walls.length){Matter.Composite.remove(engine.world,walls);walls=[]}
+  pinsLastRowX=[];
+  const pinDistX=(W-PADDING_X*2)/((3+rowCount-1)-1);
+  const pinR=(24-rowCount)/2;
+  for(let r=0;r<rowCount;r++){
+    const y=PADDING_TOP+((H-PADDING_TOP-PADDING_BOTTOM)/(rowCount-1))*r;
+    const rowPadX=PADDING_X+((rowCount-1-r)*pinDistX)/2;
+    for(let c=0;c<3+r;c++){
+      const x=rowPadX+((W-rowPadX*2)/(3+r-1))*c;
+      const pin=Matter.Bodies.circle(x,y,pinR,{isStatic:true,render:{fillStyle:'#c89460'},collisionFilter:{category:PIN_CAT,mask:BALL_CAT}});
+      pins.push(pin);if(r===rowCount-1)pinsLastRowX.push(x);
+    }
+  }
+  Matter.Composite.add(engine.world,pins);
+  const firstPinX=pins[0].position.x;
+  const angle=Math.atan2(firstPinX-pinsLastRowX[0],H-PADDING_TOP-PADDING_BOTTOM);
+  const wallX=firstPinX-(firstPinX-pinsLastRowX[0])/2-pinDistX*.25;
+  walls.push(
+    Matter.Bodies.rectangle(wallX,H/2,10,H,{isStatic:true,angle,render:{visible:false}}),
+    Matter.Bodies.rectangle(W-wallX,H/2,10,H,{isStatic:true,angle:-angle,render:{visible:false}})
+  );
+  Matter.Composite.add(engine.world,walls);
+}
+
+function dropBall(){
+  const minBet = getMinBet();
+  if(betAmount<minBet) { betAmount=minBet; betInput.value=minBet; }
+  if(betAmount>balance){ betAmount=Math.floor(balance); betInput.value=betAmount; }
+  if(betAmount<=0) return;
+  const pinR=(24-rowCount)/2,ballR=pinR*2;
+  const offsetRange=((W-PADDING_X*2)/((3+rowCount-1)-1))*.8;
+  const x=W/2+(Math.random()-.5)*offsetRange;
+  const ball=Matter.Bodies.circle(x,0,ballR,{
+    restitution:.8,friction:.5,frictionAir:frictionAirByRows[rowCount]||.04,
+    collisionFilter:{category:BALL_CAT,mask:PIN_CAT},
+    render:{fillStyle:'#e0704a'}
+  });
+  Matter.Composite.add(engine.world,ball);
+  ballBetMap[ball.id]=betAmount;
+  lockSettings(true);
+  // 兜底：5秒后强制结算（防止 sensor 漏检测 + 移动端低帧率卡球）
+  setTimeout(()=>{
+    if(ballBetMap[ball.id]!==undefined){
+      handleBin(ball); // 走正常结算，不丢钱
+    }
+  }, 12000);
+}
+
+function handleBin(ball){
+  // 去重：每个球只处理一次落槽（碰撞可能触发多次）
+  if(!ballBetMap[ball.id]) return;
+  const bx=ball.position.x;let binIdx=-1;
+  for(let i=pinsLastRowX.length-1;i>=0;i--){if(pinsLastRowX[i]<bx){binIdx=i;break}}
+  const bet=ballBetMap[ball.id]||betAmount;
+  Matter.Composite.remove(engine.world,ball); delete ballBetMap[ball.id];
+  if(binIdx<0||binIdx>=pinsLastRowX.length-1){if(getActiveBallCount()===0)lockSettings(false);return}
+  const mult=getPayout(rowCount,risk,binIdx);
+  const payout=Math.round(bet*mult*100)/100,profit=payout-bet;
+  balance+=payout;
+  plinkoTotalPayout+=payout;
+  addLog(RISK_NAMES[risk],rowCount,mult,bet,profit,binIdx,balance);
+  updateUI();
+  // 通知父页面写入逐球记录
+  try{parent.postMessage({type:'plinko_ball',betAmount:bet,multiplier:mult,payout:payout,profit:profit,risk:risk,rowCount:rowCount,binIndex:binIdx},'*');}catch(e){}
+  // flash canvas border
+  if(profit>0){canvasShell.classList.add('flash');setTimeout(()=>canvasShell.classList.remove('flash'),600);}
+  if(getActiveBallCount()===0) lockSettings(false);
+}
+
+// ============ 自动投注 ============
+function toggleAuto(on){
+  autoBet=on;
+  if(on){
+    toggleBtn.classList.add('active');
+    if(autoTimer) clearInterval(autoTimer);
+    const ms=parseInt(document.getElementById('autoInterval').value,10)||1000;
+    autoTimer=setInterval(()=>{
+      if(!autoBet) return;
+      if(balance>=betAmount){ balance-=betAmount; plinkoTotalBet+=betAmount; plinkoPlayCount++; dropBall(); updateUI(); }
+    },ms);
+  }else{
+    toggleBtn.classList.remove('active');
+    clearInterval(autoTimer); autoTimer=null;
+  }
+}
+
+// ============ 事件 ============
+dropBtn.addEventListener('click',()=>{updateUI();if(betAmount>balance){alert('余额不足！');return}balance-=betAmount;plinkoTotalBet+=betAmount;plinkoPlayCount++;dropBall();updateUI()});
+toggleBtn.addEventListener('click',()=>{updateUI();if(!autoBet&&betAmount>balance){alert('余额不足！');return}toggleAuto(!autoBet)});
+clearBtn.addEventListener('click',()=>{logEntries=[];renderLog()});
+betInput.addEventListener('change',updateUI);
+const betHalf=document.getElementById('betHalf'),betDouble=document.getElementById('betDouble');
+betHalf.addEventListener('click',()=>{betInput.value=Math.max(1,Math.floor((parseInt(betInput.value,10)||1)/2));updateUI()});
+betDouble.addEventListener('click',()=>{betInput.value=Math.min(Math.floor(balance),(parseInt(betInput.value,10)||1)*2);updateUI()});
+riskSelect.addEventListener('change',updateUI);
+rowSelect.addEventListener('change',()=>{updateUI();createEngine()});
+window.addEventListener('beforeunload',()=>{localStorage.setItem('plinko_balance',balance);localStorage.setItem('plinko_total_bet',plinkoTotalBet);localStorage.setItem('plinko_total_payout',plinkoTotalPayout);localStorage.setItem('plinko_play_count',plinkoPlayCount)});
+
+updateUI();createEngine();renderBinLabels();
+
+// ============ 兜底轮询：每 500ms 强制检查锁定状态 ============
+let lockState = false;
+const _origLockSettings = lockSettings;
+lockSettings = function(lock){
+  lockState = lock;
+  _origLockSettings(lock);
+};
+setInterval(()=>{
+  // 真理：如果 ballBetMap 实际为空，必须解锁（无论之前的事件是否触发）
+  if(lockState && getActiveBallCount()===0){
+    _origLockSettings(false);
+    lockState = false;
+  }
+}, 500);
+</script>
+</body>
+</html>

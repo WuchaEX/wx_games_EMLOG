@@ -1052,8 +1052,8 @@ class MJGame {
                         <button class="start-btn" id="btnStartGame" onclick="game.startGame()">🎮 开始游戏</button>
                         <div class="welcome-actions" id="welcomeActions">
                             <button class="btn welcome-action-btn" style="background:linear-gradient(135deg,#f39c12,#e67e22);color:white;" onclick="ShopManager.show()">🛒 商城</button>
-                            <button class="btn welcome-action-btn" style="background:linear-gradient(135deg,#3498db,#2980b9);color:white;" onclick="InventoryManager.show()">🎒 背包</button>
-                            <button class="btn welcome-action-btn" id="btnRecharge" style="background:linear-gradient(135deg,#e74c3c,#c0392b);color:white;">💰 充值</button>
+                            <button class="btn welcome-action-btn" style="background:linear-gradient(135deg,#e17055,#d63031);color:white;" onclick="InventoryManager.show()">🎒 背包</button>
+                            <button class="btn welcome-action-btn" id="btnRecharge" style="background:linear-gradient(135deg,#e74c3c,#c0392b);color:white;">💎 充值</button>
                         </div>
                         ${(MJ_NOTICE || MJ_UPDATES) ? `
                         <div class="welcome-modules">

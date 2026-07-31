@@ -769,27 +769,17 @@ function wx_niuniu_api_get_inventory() {
         $shop = DB_PREFIX . 'wx_games_shop_items';
         $uid = intval($user['uid']);
 
-        // 自动修复：同类别道具如果有多个 is_active=1，只保留最近购买的一个
-        $active_check = $db->query("SELECT ui.id, si.item_type, ui.purchased_at FROM `" . $table . "` ui
-            JOIN `" . $shop . "` si ON ui.item_id = si.id
-            WHERE ui.`game` = 'niuniu' AND ui.uid = $uid AND ui.is_active = 1 ORDER BY ui.purchased_at DESC");
-        $seen_groups = [];
-        $to_deactivate = [];
-        while ($ac = $db->fetch_array($active_check)) {
-            $grp = $ac['item_type'];
-            if (isset($seen_groups[$grp])) {
-                $to_deactivate[] = (int)$ac['id'];
-            } else {
-                $seen_groups[$grp] = true;
-            }
-        }
-        if (!empty($to_deactivate)) {
-            $db->query("UPDATE `" . $table . "` SET `is_active` = 0 WHERE `id` IN (" . implode(',', $to_deactivate) . ")");
-        }
-
-        $rows = $db->query("SELECT ui.*, si.name, si.description, si.icon, si.item_type, si.effect_data
-            FROM `" . $table . "` ui LEFT JOIN `" . $shop . "` si ON ui.item_id = si.id
-            WHERE ui.`game` = 'niuniu' AND ui.uid = $uid AND ui.quantity > 0 ORDER BY ui.is_active DESC, ui.purchased_at DESC");
+        $rows = $db->query("SELECT MIN(ui.`id`) AS id, ui.`item_id`,
+               SUM(CAST(ui.`quantity` AS SIGNED) - CAST(ui.`used` AS SIGNED)) AS quantity,
+               MAX(ui.`is_active`) AS is_active, MAX(ui.`game`) AS game,
+               MAX(si.name) AS name, MAX(si.description) AS description,
+               MAX(si.icon) AS icon, MAX(si.item_type) AS item_type,
+               MAX(si.effect_data) AS effect_data, MAX(si.is_global) AS is_global
+            FROM `" . $table . "` ui INNER JOIN `" . $shop . "` si ON ui.item_id = si.id
+            WHERE ui.`uid` = $uid AND ui.quantity > 0
+              AND (ui.`game` = 'niuniu' OR si.`is_global` = 1)
+            GROUP BY ui.`item_id`
+            ORDER BY MAX(ui.is_active) DESC, MAX(ui.purchased_at) DESC");
         $list = [];
         while ($row = $db->fetch_array($rows)) {
             $list[] = $row;
@@ -837,10 +827,13 @@ function wx_niuniu_api_purchase_item() {
                 exit;
             }
             $userModel->reduceCredits($uid, $priceEmlog);
+            // 积分流水：addCreditRecord → wx_user 积分中心
+            $logIdentifier = ($game_title ?? '斗牛') . '_buy_' . $item['name'] . '_' . time();
             if (function_exists('addCreditRecord')) {
-                $game_title = (wx_niuniu_get_config()['title'] ?? 'H5斗牛');
-                addCreditRecord($uid, 'reduce', $priceEmlog, $game_title . '_buy_' . $item['name'] . '_' . time());
+                addCreditRecord($uid, 'reduce', $priceEmlog, $logIdentifier);
             }
+            // wx_games_logs 对账
+            wx_niuniu_add_log($uid, -$priceEmlog, '站点积分消费：' . $item['name']);
         } elseif ($payCurrency === 'niuniu' && $priceNiuniu > 0) {
             // 斗牛积分支付
             $scoreData = wx_niuniu_get_user_score($user['uid'], 0);
@@ -918,19 +911,23 @@ function wx_niuniu_api_use_item() {
         if (in_array($item_type, $global_types, true)) {
             $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `uid` = $uid AND `item_id` = " . intval($row['item_id']));
         } else {
-            $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `game` = 'niuniu' AND `id` = " . intval($row['id']));
+            $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1 WHERE `id` = " . intval($row['id']));
         }
         echo json_encode(['code' => 0, 'msg' => '已激活', 'item_type' => $item_type, 'effect_data' => $row['effect_data']], JSON_UNESCAPED_UNICODE);
     } elseif ($item_type === 'score_buff') {
-        $effect = json_decode(stripslashes($row['effect_data']), true);
-        $multiplier = isset($effect['multiplier']) ? floatval($effect['multiplier']) : 2;
-        $games = isset($effect['games']) ? intval($effect['games']) : 3;
-        if ($multiplier <= 0) $multiplier = 2;
-        if ($games <= 0) $games = 3;
+        $raw = stripslashes($row['effect_data']);
+        $effect = json_decode($raw, true);
+        if (!is_array($effect)) $effect = [];
+        $multiplier = isset($effect['multiplier']) ? floatval($effect['multiplier']) : 0;
+        $games     = isset($effect['games'])     ? intval($effect['games'])     : 0;
+        // 拒绝无效 multiplier：为 0 或 <= 0 时回退为 1（无加成），不允许静默回退 2
+        if ($multiplier <= 0) $multiplier = 1;
+        if ($games     <= 0) $games     = 3;
         $db->query("UPDATE `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
             SET i.`is_active` = 0 WHERE i.`uid` = $uid AND s.`item_type` = 'score_buff'");
         $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 1, `charges` = $games, `used` = 0 WHERE `id` = " . intval($row['id']));
-        echo json_encode(['code' => 0, 'msg' => $multiplier . '倍加成已激活，剩余' . $games . '局', 'multiplier' => $multiplier, 'games' => $games], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['code' => 0, 'msg' => $multiplier . '倍加成已激活，剩余' . $games . '局',
+            'multiplier' => $multiplier, 'games' => $games, '_raw' => $raw], JSON_UNESCAPED_UNICODE);
     } else {
         $db->query("UPDATE `" . $table_inv . "` SET `used` = `used` + 1 WHERE `game` = 'niuniu' AND `id` = " . intval($row['id']));
         echo json_encode(['code' => 0, 'msg' => '使用成功'], JSON_UNESCAPED_UNICODE);
@@ -975,8 +972,12 @@ function wx_niuniu_api_get_score_buff() {
     if ($row) {
         $remaining = (int)$row['charges'] - (int)$row['used'];
         if ($remaining > 0) {
-            $effect = json_decode(stripslashes($row['effect_data']), true);
-            $buffs[] = ['multiplier' => isset($effect['multiplier']) ? floatval($effect['multiplier']) : 2, 'remaining' => $remaining];
+            $raw = stripslashes($row['effect_data']);
+            $effect = json_decode($raw, true);
+            if (!is_array($effect)) $effect = [];
+            $mult = isset($effect['multiplier']) ? floatval($effect['multiplier']) : 0;
+            if ($mult <= 0) $mult = 1;
+            $buffs[] = ['multiplier' => $mult, 'remaining' => $remaining];
         } else {
             $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 0, `used` = 0, `charges` = 0,
                 `quantity` = GREATEST(`quantity` - 1, 0) WHERE `id` = " . (int)$row['id']);
@@ -999,8 +1000,11 @@ function wx_niuniu_api_consume_score_buff() {
         WHERE i.`uid` = $uid AND i.`is_active` = 1 AND s.`item_type` = 'score_buff' LIMIT 1");
     if (!$row) { echo json_encode(['code' => 0, 'multiplier' => 1, 'remaining_buffs' => []]); exit; }
     $remaining = (int)$row['charges'] - (int)$row['used'] - 1;
-    $effect = json_decode(stripslashes($row['effect_data']), true);
-    $consumed_multiplier = isset($effect['multiplier']) ? floatval($effect['multiplier']) : 2;
+    $raw = stripslashes($row['effect_data']);
+    $effect = json_decode($raw, true);
+    if (!is_array($effect)) $effect = [];
+    $consumed_multiplier = isset($effect['multiplier']) ? floatval($effect['multiplier']) : 0;
+    if ($consumed_multiplier <= 0) $consumed_multiplier = 1;
     $db->query("UPDATE `" . $table_inv . "` SET `used` = `used` + 1 WHERE `game` = 'niuniu' AND `id` = " . (int)$row['id']);
     if ($remaining <= 0) {
         $db->query("UPDATE `" . $table_inv . "` SET `is_active` = 0, `used` = 0, `charges` = 0,

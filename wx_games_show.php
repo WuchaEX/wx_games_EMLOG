@@ -36,6 +36,12 @@ if ($game === 'niuniu') {
     exit;
 }
 
+if ($game === 'plinko') {
+    require_once __DIR__ . '/wx_games_plinko_fn.php';
+    require_once __DIR__ . '/wx_games_plinko_show.php';
+    exit;
+}
+
 // ===== 游戏大厅页 =====
 $user = wx_games_check_user();
 $list = wx_games_get_list();

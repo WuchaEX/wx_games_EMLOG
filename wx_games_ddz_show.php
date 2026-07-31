@@ -128,9 +128,9 @@ if ($current_user) {
                 <div id="welcomeBuffInfo" style="margin:6px 0;font-size:12px;min-height:18px;text-align:center;"></div>
                 <button class="btn btn-primary welcome-start-btn" id="btnStartGame">🎮 开始游戏</button>
                 <div class="welcome-actions" id="welcomeActions">
-                    <button class="btn welcome-action-btn" id="btnWelcomeShop" style="background:linear-gradient(135deg,#f39c12,#e67e22);color:white;">商城</button>
-                    <button class="btn welcome-action-btn" id="btnWelcomeInventory" style="background:linear-gradient(135deg,#e17055,#d63031);color:white;">背包</button>
-                    <button class="btn welcome-action-btn" id="btnWelcomeRecharge" style="background:linear-gradient(135deg,#e74c3c,#c0392b);color:white;">充值</button>
+                    <button class="btn welcome-action-btn" id="btnWelcomeShop" style="background:linear-gradient(135deg,#f39c12,#e67e22);color:white;">🛒 商城</button>
+                    <button class="btn welcome-action-btn" id="btnWelcomeInventory" style="background:linear-gradient(135deg,#e17055,#d63031);color:white;">🎒 背包</button>
+                    <button class="btn welcome-action-btn" id="btnWelcomeRecharge" style="background:linear-gradient(135deg,#e74c3c,#c0392b);color:white;">💎 充值</button>
                 </div>
 
                 <!-- 公告与最近更新模块 -->
