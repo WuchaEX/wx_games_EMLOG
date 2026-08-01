@@ -445,7 +445,6 @@ function wx_mojang_admin_render() {
     <li class="nav-item"><a class="nav-link active" id="mj-basic-tab" data-toggle="tab" href="#mj-basic" role="tab">基本设置</a></li>
     <li class="nav-item"><a class="nav-link" id="mj-ai-tab" data-toggle="tab" href="#mj-ai" role="tab">AI玩家设置</a></li>
     <li class="nav-item"><a class="nav-link" id="mj-score-tab" data-toggle="tab" href="#mj-score" role="tab">积分管理</a></li>
-    <li class="nav-item"><a class="nav-link" id="mj-shop-tab" data-toggle="tab" href="#mj-shop" role="tab">商城管理</a></li>
 </ul>
 
 <div class="tab-content" id="mjSettingTabsContent">

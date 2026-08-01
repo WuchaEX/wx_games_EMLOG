@@ -2245,3 +2245,7 @@ body {
 .welcome-updates .update-item:last-child {
     border-bottom: none;
 }
+@media (max-width:900px) {
+    .nav-home-btn{padding:0 6px;font-size:0}.nav-home-btn::before{content:"🏠";font-size:14px}
+    .ddz-nav-title{display:none !important}
+}

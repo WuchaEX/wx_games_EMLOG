@@ -5,6 +5,8 @@ require_once __DIR__ . '/wx_games_plinko_fn.php';
 
 $db = Database::getInstance();
 $storage = Storage::getInstance('wx_plinko'); // config 仍走 emlog_storage，与 ddz/mj/niuniu 一致
+$table_accounts = DB_PREFIX . 'wx_plinko_accounts';
+$table_shop = DB_PREFIX . 'wx_games_shop_items';
 
 // ========== 保存基本设置 ==========
 if (Input::postStrVar('plinko_action') === 'save_setting') {
@@ -24,6 +26,13 @@ if (Input::postStrVar('plinko_action') === 'save_setting') {
     if (isset($_POST['init_balance'])) {
         $config['init_balance'] = max(100, min(100000, Input::postIntVar('init_balance', $config['init_balance'])));
     }
+    // 经验值设置（写入 config，与 ddz/mj/niuniu 完全一致模式）
+    if (isset($_POST['exp_mode'])) {
+        $config['exp_mode'] = Input::postStrVar('exp_mode', 'ball') === 'payout' ? 'payout' : 'ball';
+    }
+    if (isset($_POST['exp_multiplier'])) {
+        $config['exp_multiplier'] = max(0.1, floatval(str_replace(',', '.', Input::postStrVar('exp_multiplier', '1.0'))));
+    }
     $storage->setValue('config', $config, 'array');
 
     // 数据清理
@@ -41,10 +50,7 @@ if (Input::postStrVar('plinko_action') === 'save_setting') {
         $db->query("DELETE FROM `" . DB_PREFIX . "wx_plinko_games`");
         $actions[] = '日志';
     }
-    if (!empty($actions)) {
-        emMsg('设置已保存，已清理：' . implode('、', $actions), './plugin.php?plugin=wx_games&game=plinko');
-    }
-    emMsg('设置已保存', './plugin.php?plugin=wx_games&game=plinko');
+    emMsg('设置已保存 [EXP=' . ($config['exp_mode'] ?? '?') . ' ×' . ($config['exp_multiplier'] ?? '?') . ']', './plugin.php?plugin=wx_games&game=plinko');
 }
 
 // ========== 积分管理操作 ==========
@@ -88,7 +94,6 @@ if (Input::postStrVar('plinko_action') === 'delete_user') {
 }
 
 // ========== 商城管理操作 ==========
-$table_shop = DB_PREFIX . 'wx_games_shop_items';
 
 if (Input::postStrVar('plinko_action') === 'add_item') {
     $name = addslashes(trim(Input::postStrVar('name', '')));
@@ -138,11 +143,40 @@ if (Input::getStrVar('plinko_action') === 'del_item') {
     emMsg('道具已删除', './plugin.php?plugin=wx_games&game=plinko');
 }
 
+// ========== 保存 AI 配置 ==========
+if (Input::postStrVar('plinko_action') === 'save_member_config') {
+    $memberKeys = ['boram','qri','soyeon','eunjung','hyomin','jiyeon'];
+    $cfg = wx_plinko_get_member_config();
+    foreach ($memberKeys as $k) {
+        $cfg[$k]['name'] = addslashes(trim(Input::postStrVar($k . '_name', $cfg[$k]['name'])));
+        $cfg[$k]['skill_desc'] = addslashes(trim(Input::postStrVar($k . '_skill_desc', $cfg[$k]['skill_desc'])));
+
+        // 动态等级
+        $levels = [];
+        $li = 0;
+        while (isset($_POST[$k . '_lv' . $li . '_cost'])) {
+            $cost = max(0, Input::postIntVar($k . '_lv' . $li . '_cost', 0));
+            $paramsRaw = isset($_POST[$k . '_lv' . $li . '_params']) ? $_POST[$k . '_lv' . $li . '_params'] : '{}';
+            // Input::postStrVar 可能 addslashes 破坏 JSON，直接用 $_POST
+            $paramsRaw = trim($paramsRaw);
+            $params = json_decode($paramsRaw, true);
+            if (!is_array($params)) $params = json_decode('{}', true);
+            $levels[] = ['level' => $li + 1, 'exp_cost' => $cost, 'params' => $params];
+            $li++;
+        }
+        if (!empty($levels)) $cfg[$k]['levels'] = $levels;
+    }
+    $storage->setValue('member_config', $cfg, 'array');
+    emMsg('AI配置已保存', './plugin.php?plugin=wx_games&game=plinko');
+}
+
 // ========== 读取设置 ==========
 $config = wx_plinko_get_config();
 $init_balance = isset($config['init_balance']) ? intval($config['init_balance']) : 200;
-
-// 读取商城商品
+$expMode = $config['exp_mode'] ?? 'ball';
+$expMult = floatval($config['exp_multiplier'] ?? 1.0);
+$ballSel = ($expMode === 'ball') ? 'selected' : '';
+$payoutSel = ($expMode === 'payout') ? 'selected' : '';
 $shop_items = [];
 try {
     $shop_result = $db->query("SELECT * FROM `$table_shop` WHERE (`game` = 'plinko' OR `is_global` = 1) ORDER BY `sort_order` ASC, `id` ASC");
@@ -156,6 +190,7 @@ $item_types = [
     'plinko_coin_pack' => '币包',
     'plinko_skin'      => '弹珠皮肤',
     'plinko_theme'     => '钉阵主题',
+    'member_unlock'    => '成员解锁',
     'title_colored'    => '昵称变色',
     'title_effect'     => '昵称特效',
     'title_badge'      => '称号徽章',
@@ -223,12 +258,14 @@ function wx_plinko_admin_render() {
     global $config, $init_balance, $shop_items, $item_types, $db, $table_shop;
     global $users, $logs, $search, $page, $totalPages, $total_users_count;
     global $logPage, $logTotalPages, $total_log_count;
+    global $expMode, $expMult, $ballSel, $payoutSel; // EXP 设置变量
 
     // 道具类型默认 icon 和 hint
     $item_type_icons = [
         'plinko_coin_pack' => ['icon' => '💰', 'hint' => '{"coins":1000}'],
         'plinko_skin'      => ['icon' => '🎨', 'hint' => '{"skin_name":"金球"}'],
         'plinko_theme'     => ['icon' => '🌈', 'hint' => '{"theme_name":"暗金"}'],
+        'member_unlock'    => ['icon' => '🔓', 'hint' => '{"member":"boram"}'],
         'title_colored'    => ['icon' => '🎨', 'hint' => '{"color":"#ff4500"}'],
         'title_effect'     => ['icon' => '✨', 'hint' => '{"effect":"glow","color":"gold"}'],
         'title_badge'      => ['icon' => '👑', 'hint' => '{"badge":"地主之王"}'],
@@ -244,8 +281,8 @@ function wx_plinko_admin_render() {
 
     <ul class="nav nav-tabs mb-4" id="settingTabs" role="tablist">
         <li class="nav-item"><a class="nav-link active" id="basic-tab" data-toggle="tab" href="#basic" role="tab">基本设置</a></li>
+        <li class="nav-item"><a class="nav-link" id="ai-tab" data-toggle="tab" href="#ai" role="tab">AI管理</a></li>
         <li class="nav-item"><a class="nav-link" id="admin-tab" data-toggle="tab" href="#admin" role="tab">积分管理</a></li>
-        <li class="nav-item"><a class="nav-link" id="shop-tab" data-toggle="tab" href="#shop" role="tab">商城管理</a></li>
     </ul>
 
     <div class="tab-content" id="settingTabsContent">
@@ -305,6 +342,35 @@ function wx_plinko_admin_render() {
                                 <label>最近更新（每行一条）</label>
                                 <textarea class="form-control" name="recent_updates" rows="6" style="width:100%;resize:vertical;"><?php echo htmlspecialchars($config['recent_updates']); ?></textarea>
                                 <small class="form-text text-muted">格式：版本号 - 内容</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- EXP 经验值获取设置 -->
+            <div class="row" style="margin-top:16px">
+                <div class="col-lg-6">
+                    <div class="wx-card card-dark">
+                        <div class="card-header">⚡ 经验值获取设置</div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>获取模式</label>
+                                        <select class="form-control" name="exp_mode">
+                                            <option value="ball" <?= $ballSel ?>>每个球增加1 EXP</option>
+                                            <option value="payout" <?= $payoutSel ?>>下注等价增加 1 EXP</option>
+                                        </select>
+                                        <small class="form-text text-muted">选择结算EXP的方式</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>全局倍率</label>
+                                        <input class="form-control" name="exp_multiplier" type="number" step="0.1" min="0.1" value="<?= $expMult ?>">
+                                        <small class="form-text text-muted">所有模式乘以此倍率（如 2.0 = 双倍经验）</small>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -457,143 +523,111 @@ function wx_plinko_admin_render() {
             </div>
         </div>
 
-        <!-- ========== 商城管理 ========== -->
-        <div class="tab-pane fade" id="shop" role="tabpanel">
-            <!-- 新增道具表单 -->
-            <div class="wx-card card-dark mb-4">
-                <div class="card-header">➕ 新增道具</div>
-                <div class="card-body">
-                    <form method="post" action="./plugin.php?plugin=wx_games&game=plinko">
-                        <input type="hidden" name="plinko_action" value="add_item">
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="form-group">
-                                    <label>道具名称</label>
-                                    <input type="text" class="form-control" name="name" required>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-group">
-                                    <label>道具类型</label>
-                                    <select class="form-control" name="item_type" onchange="updateAddEffectHint(this.value)">
-                                        <?php foreach ($item_types as $type => $label): ?>
-                                        <option value="<?php echo $type; ?>"><?php echo $label; ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-group">
-                                    <label>图标</label>
-                                    <input type="text" class="form-control" name="icon" value="💰">
-                                </div>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="form-group">
-                                    <label>站点积分价格</label>
-                                    <input type="number" class="form-control" name="price_emlog" value="0" min="0">
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-group">
-                                    <label>游戏积分价格</label>
-                                    <input type="number" class="form-control" name="price_game" value="0" min="0">
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-group">
-                                    <label>排序</label>
-                                    <input type="number" class="form-control" name="sort_order" value="10" min="0">
-                                </div>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-8">
-                                <div class="form-group">
-                                    <label>效果数据（JSON）<span id="addEffectHint" style="color:#999;font-weight:400;margin-left:8px;">{"coins":1000}</span></label>
-                                    <input type="text" class="form-control" name="effect_data" value='{"coins":1000}'>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-group">
-                                    <label>通用道具</label>
-                                    <select class="form-control" name="is_global">
-                                        <option value="0">否</option>
-                                        <option value="1">是</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-group">
-                                    <label>状态</label>
-                                    <select class="form-control" name="status">
-                                        <option value="1">上架</option>
-                                        <option value="0">下架</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>道具描述</label>
-                            <input type="text" class="form-control" name="description" placeholder="简短描述">
-                        </div>
-                        <button type="submit" class="wx-btn">添加道具</button>
-                    </form>
-                </div>
-            </div>
 
-            <!-- 现有道具列表 -->
-            <div class="wx-card card-dark">
-                <div class="card-header">📦 道具列表（共 <?php echo count($shop_items); ?> 个）</div>
-                <div class="card-body" style="padding:0;">
-                    <div style="overflow-x:auto;">
-                        <table class="table-admin">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>名称</th>
-                                    <th>类型</th>
-                                    <th>效果数据</th>
-                                    <th>站点积分</th>
-                                    <th>游戏积分</th>
-                                    <th>通用</th>
-                                    <th>排序</th>
-                                    <th>状态</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($shop_items as $item): ?>
-                                <tr>
-                                    <td><?php echo $item['id']; ?></td>
-                                    <td><?php echo htmlspecialchars($item['name']); ?></td>
-                                    <td><span style="font-size:12px;background:#f0f0f5;padding:2px 8px;border-radius:4px;"><?php echo isset($item_types[$item['item_type']]) ? $item_types[$item['item_type']] : $item['item_type']; ?></span></td>
-                                    <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:11px;"><?php echo htmlspecialchars($item['effect_data']); ?></td>
-                                    <td><?php echo $item['price_emlog']; ?></td>
-                                    <td><?php echo $item['price_game']; ?></td>
-                                    <td><?php echo $item['is_global'] ? '✅' : '-'; ?></td>
-                                    <td><?php echo $item['sort_order']; ?></td>
-                                    <td><?php echo $item['status'] ? '🟢' : '⚫'; ?></td>
-                                    <td>
-                                        <a href="./plugin.php?plugin=wx_games&game=plinko&plinko_action=del_item&id=<?php echo $item['id']; ?>" class="wx-btn wx-btn-sm wx-btn-danger" onclick="return confirm('确定删除该道具？')">删除</a>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                                <?php if (empty($shop_items)): ?>
-                                <tr><td colspan="10" class="wx-empty">暂无道具，请添加</td></tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
+        <!-- ========== AI管理 ========== -->
+        <div class="tab-pane fade" id="ai" role="tabpanel">
+            <div class="alert alert-info" style="font-size:12px;margin-bottom:16px;background:rgba(226,176,74,0.08);border-color:rgba(226,176,74,0.2);color:#b8935a;">
+                💡 商城解锁用：创建 <code>member_unlock</code> 道具时，<code>effect_data</code> 填入 <code>{"member":"ID"}</code>（ID 见每个角色卡片上的 <b>ID 标签</b>）
+            </div>
+<?php
+$memberKeys = ['boram','qri','soyeon','eunjung','hyomin','jiyeon'];
+$memberCfg = wx_plinko_get_member_config();
+$plugin_assets_url = BLOG_URL . 'content/plugins/wx_games/games/ddz/assets/';
+// 读取 ddz 头像列表（与斗地主一致）
+$avatar_files = ['boram.jpg','qri.jpg','soyeon.jpg','eunjung.jpg','hyomin.jpg','jiyeon.jpg'];
+$colors = ['#e74c3c','#d63031','#e17055','#2ecc71','#e67e22','#fdcb6e'];
+?>
+            <form method="post" action="./plugin.php?plugin=wx_games&game=plinko" id="aiForm">
+                <input type="hidden" name="plinko_action" value="save_member_config">
+            <div class="row">
+<?php foreach ($memberKeys as $idx => $k):
+    $ai = $memberCfg[$k];
+    $levels = isset($ai['levels']) ? $ai['levels'] : [];
+    $color = $colors[$idx];
+?>
+                <div class="col-lg-6 mb-4">
+                    <div class="wx-card card-dark" style="height:100%;">
+                        <div class="card-header" style="padding:12px 16px;">
+                            <div style="display:flex;align-items:center;gap:14px;">
+                                <img src="<?php echo $plugin_assets_url . $ai['avatar']; ?>" id="preview_<?php echo $k; ?>" style="width:56px;height:56px;border-radius:50%;border:3px solid <?php echo $color; ?>;object-fit:cover;flex-shrink:0;">
+                                <div style="flex:1;min-width:0;">
+                                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                        <input class="form-control" name="<?php echo $k; ?>_name" value="<?php echo htmlspecialchars($ai['name']); ?>" style="font-size:16px;font-weight:700;width:120px;border:none;background:transparent;border-bottom:2px solid #444;border-radius:0;color:#fff;padding:3px 0;">
+                                        <select class="form-control" name="<?php echo $k; ?>_avatar" onchange="document.getElementById('preview_<?php echo $k; ?>').src='<?php echo $plugin_assets_url; ?>'+this.value" style="font-size:11px;padding:2px 6px;height:24px;width:auto;">
+                                            <?php foreach ($avatar_files as $af): ?>
+                                            <option value="<?php echo $af; ?>" <?php echo $ai['avatar'] === $af ? 'selected' : ''; ?>><?php echo $af; ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <input class="form-control" name="<?php echo $k; ?>_skill_desc" value="<?php echo htmlspecialchars($ai['skill_desc']); ?>" style="font-size:11px;padding:3px 8px;width:200px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e0704a;" placeholder="技能描述">
+                                        <span style="font-size:10px;color:#8f867a;background:rgba(226,176,74,0.10);border:1px solid rgba(226,176,74,0.25);padding:1px 8px;border-radius:10px;font-family:monospace;">ID: <?php echo $k; ?></span>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body" style="padding:0;">
+                            <table class="table-admin" style="margin:0;font-size:12px;">
+                                <thead>
+                                    <tr>
+                                        <th style="width:50px;padding:6px 10px;">等级</th>
+                                        <th style="width:80px;padding:6px 10px;">EXP</th>
+                                        <th style="padding:6px 10px;">技能参数（JSON）</th>
+                                        <th style="width:40px;padding:6px 10px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="levels_<?php echo $k; ?>">
+<?php foreach ($levels as $li => $lv): ?>
+                                    <tr>
+                                        <td style="padding:4px 10px;"><strong style="font-size:12px;color:<?php echo $color; ?>;">Lv<?php echo (int)$lv['level']; ?></strong></td>
+                                        <td style="padding:4px 10px;"><input class="form-control" name="<?php echo $k; ?>_lv<?php echo $li; ?>_cost" type="number" value="<?php echo (int)$lv['exp_cost']; ?>" min="0" style="width:70px;padding:3px 5px;font-size:11px;"></td>
+                                        <td style="padding:4px 10px;"><input class="form-control" name="<?php echo $k; ?>_lv<?php echo $li; ?>_params" value="<?php echo htmlspecialchars(json_encode($lv['params'], JSON_UNESCAPED_UNICODE)); ?>" style="font-size:11px;font-family:monospace;padding:3px 6px;"></td>
+                                        <td style="padding:4px 10px;"><button type="button" class="wx-btn wx-btn-sm wx-btn-danger" onclick="removeLevel(this,'<?php echo $k; ?>')" style="padding:1px 5px;font-size:11px;">✕</button></td>
+                                    </tr>
+<?php endforeach; ?>
+                                </tbody>
+                            </table>
+                            <div style="padding:6px 12px;border-top:1px solid #333;">
+                                <button type="button" class="wx-btn wx-btn-sm" onclick="addLevel('<?php echo $k; ?>')" style="font-size:11px;padding:2px 10px;">+ 添加等级</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
+<?php endforeach; ?>
             </div>
+            <div style="text-align:center;margin-top:16px">
+                <button type="submit" class="wx-btn" style="padding:10px 48px;font-size:15px">💾 保存 AI 配置</button>
+            </div>
+            </form>
         </div>
-    </div>
-</div>
+        </div> <!-- end tab-content -->
+    </div> <!-- end container-fluid -->
 
 <script>
+// 动态添加/删除等级行
+var memberKeys = <?php echo json_encode($memberKeys); ?>;
+function addLevel(key) {
+    var tbody = document.getElementById('levels_'+key);
+    var rowCount = tbody.querySelectorAll('tr').length;
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><strong>Lv'+(rowCount+1)+'</strong></td>'
+        + '<td><input class="form-control" name="'+key+'_lv'+rowCount+'_cost" type="number" value="0" min="0" style="width:90px;padding:4px 6px;font-size:12px;"></td>'
+        + '<td><input class="form-control" name="'+key+'_lv'+rowCount+'_params" value="{}" style="font-size:12px;font-family:monospace;"></td>'
+        + '<td><button type="button" class="wx-btn wx-btn-sm wx-btn-danger" onclick="removeLevel(this,\''+key+'\')">✕</button></td>';
+    tbody.appendChild(tr);
+}
+function removeLevel(btn, key) {
+    var tr = btn.closest('tr');
+    tr.parentNode.removeChild(tr);
+    // 重新编号
+    var rows = document.querySelectorAll('#levels_'+key+' tr');
+    rows.forEach(function(r, i) {
+        r.querySelector('td strong').textContent = 'Lv'+(i+1);
+        r.querySelectorAll('input').forEach(function(inp) {
+            var oldName = inp.name;
+            inp.name = oldName.replace(/lv\d+/, 'lv'+i);
+        });
+    });
+}
 function updateAddEffectHint(type) {
     var hints = <?php echo json_encode(array_map(function($v) { return $v['hint']; }, $item_type_icons)); ?>;
     var el = document.getElementById('addEffectHint');
@@ -609,6 +643,23 @@ function deletePlinkoUser(uid) {
     xhr.onload = function() { location.reload(); };
     xhr.send(fd);
 }
+
+// Toast notification
+(function(){
+  var params = new URLSearchParams(location.search);
+  var toast = params.get('toast');
+  if(toast){
+    var div = document.createElement('div');
+    div.className = 'wx-toast';
+    div.textContent = decodeURIComponent(toast);
+    document.body.appendChild(div);
+    setTimeout(function(){ div.remove(); }, 2500);
+    if(window.history.replaceState){
+      params.delete('toast');
+      window.history.replaceState({}, '', location.pathname + '?' + params.toString());
+    }
+  }
+})();
 </script>
 <?php
 }

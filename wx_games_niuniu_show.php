@@ -276,7 +276,8 @@ body{font-family:'Microsoft YaHei','PingFang SC','Helvetica Neue',sans-serif;
 
 /* ====== 响应式 ====== */
 @media(max-width:768px){
-    .nn-nav{height:50px}.nn-nav-inner{padding:0 8px}.nn-nav-title{font-size:14px;letter-spacing:0;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}.nn-nav-icon{font-size:20px}.nn-nav-left{gap:6px}.nn-nav-right{gap:4px}
+    .nn-nav{height:50px}.nn-nav-inner{padding:0 8px}.nn-nav-icon{font-size:20px}.nn-nav-left{gap:6px}.nn-nav-right{gap:4px}
+    .nn-nav-title{display:none !important}
     .nn-nav-right a{font-size:12px;padding:4px 8px}
     .nav-user-info{padding:0 6px;max-width:42px}.nav-avatar{width:22px;height:22px}.nav-user-name{display:none}
     .nav-score{padding:0 6px}.nav-score-label{display:none}
@@ -373,7 +374,7 @@ body{font-family:'Microsoft YaHei','PingFang SC','Helvetica Neue',sans-serif;
             <?php endif; ?>
             <button class="nav-btn" id="navBtnRanking" onclick="showRanking()">🏆 <span class="nav-btn-text">排行</span></button>
             <button class="nav-btn" id="navBtnMult" onclick="showMultiplierChart()">🔢 <span class="nav-btn-text">倍率</span></button>
-            <a href="?plugin=wx_games" class="nav-home-btn">返回首页</a>
+            <a href="?plugin=wx_games" class="nav-home-btn">返回大厅</a>
         </div>
     </div>
 </nav>

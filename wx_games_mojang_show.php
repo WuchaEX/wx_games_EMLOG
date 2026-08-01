@@ -98,7 +98,7 @@ window.MJ_GUEST_PLAY = <?= $config['guest_play'] == '1' ? 'true' : 'false' ?>;
             <span class="mj-nav-icon">🀄</span>
             <h1 class="mj-nav-title"><?= htmlspecialchars($config['title']) ?></h1>
         </div>
-        <div class="mj-nav-right" id="mjNavRight">
+        <div class="mj-nav-right" id="navRight">
             <?php if ($uid > 0): ?>
             <div class="nav-user-info" id="navUserInfo">
                 <?php if ($userAvatar): ?>
@@ -117,7 +117,7 @@ window.MJ_GUEST_PLAY = <?= $config['guest_play'] == '1' ? 'true' : 'false' ?>;
             <?php endif; ?>
             <button class="nav-btn" id="btnLeaderboard" onclick="Leaderboard.show()">🏆 <span class="nav-btn-text">排行</span></button>
             <button class="nav-btn" onclick="showFanTypes()">🀄 <span class="nav-btn-text">番型</span></button>
-            <button class="nav-btn nav-home-btn" id="btnReturnHome" onclick="return confirm('确定要返回首页吗？') &amp;&amp; (window.location.href='<?php echo BLOG_URL; ?>')">返回首页</button>
+            <a href="?plugin=wx_games" class="nav-btn nav-home-btn" id="btnReturnHome">返回大厅</a>
         </div>
     </div>
 </nav>

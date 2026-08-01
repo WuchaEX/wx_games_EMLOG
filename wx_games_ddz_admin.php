@@ -514,7 +514,6 @@ function wx_ddz_admin_render() {
         <li class="nav-item"><a class="nav-link active" id="basic-tab" data-toggle="tab" href="#basic" role="tab">基本设置</a></li>
         <li class="nav-item"><a class="nav-link" id="ai-tab" data-toggle="tab" href="#ai" role="tab">AI玩家设置</a></li>
         <li class="nav-item"><a class="nav-link" id="admin-tab" data-toggle="tab" href="#admin" role="tab">积分管理</a></li>
-        <li class="nav-item"><a class="nav-link" id="shop-tab" data-toggle="tab" href="#shop" role="tab">商城管理</a></li>
     </ul>
 
     <div class="tab-content" id="settingTabsContent">

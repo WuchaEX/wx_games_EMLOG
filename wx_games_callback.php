@@ -236,6 +236,19 @@ SQL
             'title' => 'H5弹珠台', 'init_balance' => 200,
             'notice' => '欢迎来到H5弹珠台！选择风险等级，投球赢取奖励！',
             'recent_updates' => '', 'recharge_link' => '',
+            'exp_mode' => 'ball', 'exp_multiplier' => 1.0,
+        ], 'array');
+    }
+    // 成员配置默认值（仅首次初始化）
+    $member_cfg = $storage_plinko->getValue('member_config');
+    if (empty($member_cfg)) {
+        $storage_plinko->setValue('member_config', [
+            'boram' => ['name'=>'全宝蓝','avatar'=>'boram.jpg','skill_desc'=>'低倍槽退还下注额','levels'=>[['level'=>1,'exp_cost'=>0,'params'=>['spacing'=>0]],['level'=>2,'exp_cost'=>100,'params'=>['spacing'=>0.05]],['level'=>3,'exp_cost'=>300,'params'=>['spacing'=>0.10]],['level'=>4,'exp_cost'=>600,'params'=>['spacing'=>0.15]],['level'=>5,'exp_cost'=>1000,'params'=>['spacing'=>0.20]]]],
+            'qri' => ['name'=>'李居丽','avatar'=>'qri.jpg','skill_desc'=>'钉反弹系数增加','levels'=>[['level'=>1,'exp_cost'=>0,'params'=>['restitution'=>0]],['level'=>2,'exp_cost'=>100,'params'=>['restitution'=>0.02]],['level'=>3,'exp_cost'=>300,'params'=>['restitution'=>0.04]],['level'=>4,'exp_cost'=>600,'params'=>['restitution'=>0.06]],['level'=>5,'exp_cost'=>1000,'params'=>['restitution'=>0.08]]]],
+            'soyeon' => ['name'=>'朴素妍','avatar'=>'soyeon.jpg','skill_desc'=>'落槽后随机倍率加成','levels'=>[['level'=>1,'exp_cost'=>0,'params'=>['prob'=>0,'min'=>0.8,'max'=>1.5]],['level'=>2,'exp_cost'=>100,'params'=>['prob'=>0.05,'min'=>0.8,'max'=>1.5]],['level'=>3,'exp_cost'=>300,'params'=>['prob'=>0.10,'min'=>0.8,'max'=>1.6]],['level'=>4,'exp_cost'=>600,'params'=>['prob'=>0.15,'min'=>0.8,'max'=>1.7]],['level'=>5,'exp_cost'=>1000,'params'=>['prob'=>0.20,'min'=>0.8,'max'=>1.8]]]],
+            'eunjung' => ['name'=>'咸恩静','avatar'=>'eunjung.jpg','skill_desc'=>'概率额外弹珠','levels'=>[['level'=>1,'exp_cost'=>0,'params'=>['prob'=>0]],['level'=>2,'exp_cost'=>100,'params'=>['prob'=>0.04]],['level'=>3,'exp_cost'=>300,'params'=>['prob'=>0.08]],['level'=>4,'exp_cost'=>600,'params'=>['prob'=>0.12]],['level'=>5,'exp_cost'=>1000,'params'=>['prob'=>0.16]]]],
+            'hyomin' => ['name'=>'朴孝敏','avatar'=>'hyomin.jpg','skill_desc'=>'初速度↓+投球间隔↓','levels'=>[['level'=>1,'exp_cost'=>0,'params'=>['speed'=>0,'interval'=>0]],['level'=>2,'exp_cost'=>100,'params'=>['speed'=>0.03,'interval'=>50]],['level'=>3,'exp_cost'=>300,'params'=>['speed'=>0.06,'interval'=>100]],['level'=>4,'exp_cost'=>600,'params'=>['speed'=>0.09,'interval'=>150]],['level'=>5,'exp_cost'=>1000,'params'=>['speed'=>0.12,'interval'=>200]]]],
+            'jiyeon' => ['name'=>'朴智妍','avatar'=>'jiyeon.jpg','skill_desc'=>'起始位置偏移调整','levels'=>[['level'=>1,'exp_cost'=>0,'params'=>['offset'=>0]],['level'=>2,'exp_cost'=>100,'params'=>['offset'=>3]],['level'=>3,'exp_cost'=>300,'params'=>['offset'=>6]],['level'=>4,'exp_cost'=>600,'params'=>['offset'=>9]],['level'=>5,'exp_cost'=>1000,'params'=>['offset'=>12]]]],
         ], 'array');
     }
     // 玩家数据自有表
@@ -245,9 +258,36 @@ SQL
         `total_bet` DECIMAL(12,1) NOT NULL DEFAULT 0.0,
         `total_payout` DECIMAL(12,1) NOT NULL DEFAULT 0.0,
         `play_count` INT UNSIGNED NOT NULL DEFAULT 0,
+        `member_exp` INT UNSIGNED NOT NULL DEFAULT 0,
+        `members` TEXT,
         `updated_at` INT UNSIGNED NOT NULL DEFAULT 0,
         PRIMARY KEY (`uid`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='plinko玩家账户';");
+    // 兜底添加列（callback_up 兼容已有表）
+    foreach (['member_exp', 'members'] as $col) {
+        $colExists = $db->once_fetch_array("SHOW COLUMNS FROM `" . DB_PREFIX . "wx_plinko_accounts` LIKE '$col'");
+        if (!$colExists) {
+            $type = ($col === 'member_exp') ? 'INT UNSIGNED NOT NULL DEFAULT 0' : 'TEXT';
+            $db->query("ALTER TABLE `" . DB_PREFIX . "wx_plinko_accounts` ADD COLUMN `$col` $type");
+        }
+    }
+    // 默认写入 6 个成员解锁券到商城
+    $memberDefs = [
+        ['name' => 'Boram 解锁',  'type' => 'member_unlock', 'icon' => '🐰', 'eff' => '{"member":"boram"}',  'sort' => 100],
+        ['name' => 'Qri 解锁',    'type' => 'member_unlock', 'icon' => '👑', 'eff' => '{"member":"qri"}',    'sort' => 101],
+        ['name' => 'Soyeon 解锁', 'type' => 'member_unlock', 'icon' => '🔥', 'eff' => '{"member":"soyeon"}', 'sort' => 102],
+        ['name' => 'Eunjung 解锁','type' => 'member_unlock', 'icon' => '💎', 'eff' => '{"member":"eunjung"}','sort' => 103],
+        ['name' => 'Hyomin 解锁', 'type' => 'member_unlock', 'icon' => '⚡', 'eff' => '{"member":"hyomin"}', 'sort' => 104],
+        ['name' => 'Jiyeon 解锁', 'type' => 'member_unlock', 'icon' => '🎯', 'eff' => '{"member":"jiyeon"}', 'sort' => 105],
+    ];
+    $table_shop = DB_PREFIX . 'wx_games_shop_items';
+    foreach ($memberDefs as $m) {
+        $exist = $db->once_fetch_array("SELECT `id` FROM `$table_shop` WHERE `game`='plinko' AND `item_type`='member_unlock' AND `name`='" . addslashes($m['name']) . "' LIMIT 1");
+        if (!$exist) {
+            $db->query("INSERT INTO `$table_shop` (`game`,`name`,`description`,`icon`,`item_type`,`effect_data`,`price_emlog`,`price_game`,`sort_order`,`status`,`is_global`,`created_at`)
+                VALUES ('plinko','" . addslashes($m['name']) . "','解锁 T-ARA 成员，每局可选为伙伴','" . $m['icon'] . "','" . $m['type'] . "','" . addslashes($m['eff']) . "',0,0," . $m['sort'] . ",1,0," . time() . ")");
+        }
+    }
     // plinko 逐球日志表
     $db->query("CREATE TABLE IF NOT EXISTS `" . DB_PREFIX . "wx_plinko_games` (
         `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,

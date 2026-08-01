@@ -7,7 +7,8 @@ $base_url = BLOG_URL;
 $avatar = $current_user && isset($current_user['avatar']) ? $current_user['avatar'] : (BLOG_URL . 'admin/views/images/avatar.png');
 
 // 加载存档（用于初始余额显示）
-$saved_balance = 200;
+$_plinko_cfg = wx_plinko_get_config();
+$saved_balance = isset($_plinko_cfg['init_balance']) ? intval($_plinko_cfg['init_balance']) : 200;
 $has_save = false;
 $save_data = [];
 if ($current_user) {
@@ -38,20 +39,20 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
   background:linear-gradient(135deg,#2D1A12 0%,#1A0E08 100%);color:#fff}
 
 /* ---- 导航栏（完全复刻 ddz）---- */
-.ddz-nav{width:100%;margin:0;height:60px;
+.ddz-nav,.pb-nav{width:100%;margin:0;height:60px;
   background:linear-gradient(135deg,#e17055 0%,#d94a2e 100%);
   display:flex;align-items:center;position:fixed;top:0;left:0;z-index:5000;
   box-shadow:0 2px 20px rgba(225,112,85,0.3);
   transition:background .3s ease,box-shadow .3s ease;
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-.ddz-nav-inner{width:100%;padding:0 24px;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box}
-.ddz-nav-left{display:flex;align-items:center;gap:10px;flex-shrink:0}
-.ddz-nav-icon{font-size:24px;line-height:1}
-.ddz-nav-title{color:#fff;font-size:20px;font-weight:600;letter-spacing:2px;margin:0}
-.ddz-nav-right{display:flex;gap:12px;align-items:center;margin-left:auto}
+.ddz-nav-inner,.pb-nav-inner{width:100%;padding:0 24px;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box}
+.ddz-nav-left,.pb-nav-left{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.ddz-nav-icon,.pb-nav-icon{font-size:24px;line-height:1}
+.ddz-nav-title,.pb-nav-title{color:#fff;font-size:20px;font-weight:600;letter-spacing:2px;margin:0}
+.ddz-nav-right,.pb-nav-right{display:flex;gap:12px;align-items:center;margin-left:auto}
 
 /* ddz nav 按钮组 */
-.nav-user-info,.nav-score,.nav-btn,.nav-home-btn{display:flex;align-items:center;justify-content:center;height:34px;border-radius:17px;box-sizing:border-box;flex-shrink:0}
+.nav-user-info,.nav-score,.nav-btn,.nav-home-btn{display:flex;align-items:center;justify-content:center;height:35px;border-radius:17px;box-sizing:border-box;flex-shrink:0}
 .nav-user-info{gap:6px;padding:0 10px;background:rgba(0,0,0,.25);max-width:220px}
 .nav-avatar{width:24px;height:24px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,215,0,.7);flex-shrink:0}
 .nav-user-name{font-size:13px;color:#fff;font-weight:500;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -135,27 +136,47 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 .btn-guest:hover{background:rgba(255,255,255,0.08);color:#fff}
 
 /* ---- 游戏区（初始隐藏） ---- */
-.game-wrap{display:none;position:fixed;top:60px;left:0;right:0;bottom:0}
+@media(max-width:768px){
+  .game-nav{height:44px}.game-nav-inner{padding:0 6px}.game-nav-title{font-size:13px;white-space:nowrap;max-width:100px;overflow:hidden;text-overflow:ellipsis}.game-nav-left{gap:4px}.game-nav-right{gap:3px}
+  .nav-user-info{padding:0 4px;max-width:36px}.nav-avatar{width:20px;height:20px}.nav-user-name{display:none}
+  .nav-score{padding:0 5px}.nav-score-label{display:none}
+  .nav-btn{padding:0 6px}.nav-btn .nav-btn-text{display:none}
+  .nav-home-btn{padding:0 6px;font-size:0}.nav-home-btn::before{content:"🏠";font-size:14px}
+  .login-screen{top:44px}.login-container{min-width:auto;padding:20px 16px}
+  .game-container{height:calc(100vh - 44px);margin-top:44px}
+  .game-wrap{top:44px!important}
+  .welcome-score{font-size:13px}.welcome-score strong{font-size:16px}
+  .game-view.active{padding:8px}
+}
+.game-wrap{display:none;position:fixed;top:60px;left:0;right:0;bottom:0;overflow-y:auto;background:#15120f}
 .game-wrap.active{display:block}
-.game-wrap iframe{width:100%;height:100%;border:none;display:block}
+@media (max-width:900px) {
+  .ddz-nav-title,.pb-nav-title {display:none !important}
+  .game-wrap{padding-top:12px}
+}
 </style>
 </head>
 <body>
-<!-- 导航栏（复刻 ddz） -->
-<nav class="ddz-nav">
-  <div class="ddz-nav-inner">
-    <div class="ddz-nav-left">
-      <span class="ddz-nav-icon">👑</span>
-      <h1 class="ddz-nav-title"><?php echo htmlspecialchars($_plinko_cfg['title']); ?></h1>
+<!-- 导航栏 -->
+<nav class="pb-nav">
+  <div class="pb-nav-inner">
+    <div class="pb-nav-left">
+      <span class="pb-nav-icon">🎱</span>
+      <h1 class="pb-nav-title"><?php echo htmlspecialchars($_plinko_cfg['title']); ?></h1>
     </div>
-    <div class="ddz-nav-right">
+    <div class="pb-nav-right" id="navRight">
       <?php if ($current_user): ?>
         <div class="nav-user-info">
-          <img class="nav-avatar" src="<?php echo $avatar; ?>" alt="" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23e17055%22/><text x=%2250%22 y=%2265%22 text-anchor=%22middle%22 font-size=%2240%22>👑</text></svg>'">
+          <?php $userAvatar = $current_user['avatar'] ?? ''; ?>
+          <?php if ($userAvatar): ?>
+            <img class="nav-avatar" src="<?php echo $userAvatar; ?>" alt="">
+          <?php else: ?>
+            <span style="font-size:20px;line-height:1">👤</span>
+          <?php endif; ?>
           <span class="nav-user-name" id="navUserName"><?php echo htmlspecialchars($current_user['nickname']); ?></span>
         </div>
         <div class="nav-score" id="navScoreBox" title="点击查看弹珠流水" onclick="showScoreLog()">
-          <span class="nav-score-label">弹珠数量:</span>
+          <span class="nav-score-label">积分:</span>
           <span class="nav-score-value" id="navBalance"><?php echo $saved_balance; ?></span>
         </div>
         <button class="nav-btn" onclick="showRanking()">
@@ -188,6 +209,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
           <div class="welcome-score">弹珠数量: <strong id="welcomeScore"><?php echo $saved_balance; ?></strong></div>
         </div>
         <div id="welcomeBuffInfo" style="margin:6px 0;font-size:12px;min-height:18px;text-align:center;color:#aaa;">🎴 当前没有应用积分卡，可在商城购买</div>
+        
         <button class="welcome-start-btn" onclick="startGame()">🎱 开始游戏</button>
         <div class="welcome-actions">
           <button class="welcome-action-btn" onclick="ShopManager.show()" style="background:linear-gradient(135deg,#f39c12,#e67e22);color:#fff;">🛒 商城</button>
@@ -223,7 +245,21 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 
 <!-- 游戏区（初始隐藏） -->
 <div class="game-wrap" id="gameView">
-  <iframe id="plinkoFrame" src="<?php echo $game_url; ?>index.html?v=11" allow="autoplay"></iframe>
+<script>
+window.__plinko = <?php echo json_encode([
+    'notice' => $plinko_notice,
+    'updates' => $plinko_updates,
+    'uid' => ($current_user ? intval($current_user['uid']) : 0),
+    'score' => $saved_balance,
+    'emlog_credits' => ($current_user ? $emlog_credits : 0),
+    'logged_in' => ($current_user ? true : false),
+    'nickname' => ($current_user ? $current_user['nickname'] : ''),
+    'shop_api' => $base_url . '?plugin=wx_games&game=plinko',
+], JSON_UNESCAPED_UNICODE); ?>;
+window._plinko_uid = window.__plinko.uid;
+</script>
+<script src="<?php echo $game_url; ?>matter.min.js"></script>
+<?php include __DIR__ . '/wx_games_plinko_play.php'; ?>
 </div>
 
 <!-- 商城弹窗 (ddz 风格) -->
@@ -280,159 +316,51 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
   </div>
 </div>
 
-<script>
-window.PLINKO_NOTICE = <?php echo json_encode($plinko_notice, JSON_UNESCAPED_UNICODE); ?>;
-window.PLINKO_UPDATES = <?php echo json_encode($plinko_updates, JSON_UNESCAPED_UNICODE); ?>;
-
-// 公告/更新渲染
-(function(){
-  function renderLines(txt){return txt.split('\n').map(function(l){return l.trim()?l.trim()+'<br>':'';}).join('');}
-  var n = document.getElementById('noticeBody');
-  if (n && window.PLINKO_NOTICE) n.innerHTML = renderLines(window.PLINKO_NOTICE);
-  var u = document.getElementById('updatesBody');
-  if (u && window.PLINKO_UPDATES) u.innerHTML = renderLines(window.PLINKO_UPDATES);
-})();
-</script>
 
 <script>
-// ============ 存档同步 IIFE ============
-(function(){
-  var uid = <?php echo $current_user ? intval($current_user['uid']) : 0; ?>;
-  var lastSaveTime = 0;
-  var saveMinInterval = 2000;
-  var autoSaveInterval = 3000;
-  var frame = document.getElementById('plinkoFrame');
-  var navBalance = document.getElementById('navBalance');
-  var welcomeScore = document.getElementById('welcomeScore');
-  var plinkoRestored = false;
-  var plinkoSaveTimer = null;
+// ============ 全局变量（原生渲染用） ============
 
-  function getGameStats() {
-    try {
-      var ls = frame.contentWindow.localStorage;
-      return {
-        balance: parseFloat(ls.getItem('plinko_balance')||'200')||200,
-        total_bet: parseInt(ls.getItem('plinko_total_bet')||'0',10)||0,
-        total_payout: parseInt(ls.getItem('plinko_total_payout')||'0',10)||0,
-        play_count: parseInt(ls.getItem('plinko_play_count')||'0',10)||0
-      };
-    } catch(e) { return null; }
-  }
-  function saveToServer() {
-    if (uid <= 0) return; var now = Date.now();
-    if (now - lastSaveTime < saveMinInterval) return; lastSaveTime = now;
-    var stats = getGameStats(); if (!stats) return;
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '?plugin=wx_games&game=plinko&plinko_action=save', true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.onreadystatechange = function(){
-      if (xhr.readyState===4 && xhr.status===200) {
-        try { JSON.parse(xhr.responseText); } catch(e) {}
-      }
-    };
-    xhr.send(JSON.stringify(stats));
-  }
-  function loadFromServer() {
-    if (uid <= 0) return;
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', '?plugin=wx_games&game=plinko&plinko_action=load', true);
-    xhr.onreadystatechange = function(){
-      if (xhr.readyState===4 && xhr.status===200) {
-        try {
-          var res = JSON.parse(xhr.responseText);
-          if (res.code===0 && res.data && res.data.found && res.data.data && res.data.data.balance>0) {
-            try { frame.contentWindow.localStorage.setItem('plinko_restore', JSON.stringify({balance: res.data.data.balance})); } catch(e) {}
-            // reload iframe 让 restore 逻辑生效（只在 iframe 加载时执行一次）
-            try { frame.contentWindow.location.reload(); } catch(e) {}
-          } else {
-            // 数据库无存档：清除浏览器缓存，iframe 重启时用默认余额
-            try {
-              frame.contentWindow.localStorage.removeItem('plinko_balance');
-              frame.contentWindow.localStorage.removeItem('plinko_restore');
-              frame.contentWindow.localStorage.removeItem('plinko_total_bet');
-              frame.contentWindow.localStorage.removeItem('plinko_total_payout');
-              frame.contentWindow.localStorage.removeItem('plinko_play_count');
-            } catch(e) {}
-            // 强制 iframe 重新加载（清缓存后从头开始）
-            try { frame.contentWindow.location.reload(); } catch(e) {}
-          }
-        } catch(e) {}
-      }
-    };
-    xhr.send();
-  }
 
-  // 唯一余额显示入口：1位小数格式化
-  function updateBalance(bal) {
-    bal = Math.round(Number(bal) * 10) / 10;
-    var txt = bal % 1 === 0 ? String(bal) : bal.toFixed(1);
-    if (navBalance) navBalance.textContent = txt;
-    if (welcomeScore) welcomeScore.textContent = txt;
-  }
-  // 暴露到全局，让 ShopManager/InventoryManager 可调用
-  window._plinkoUpdateBalance = updateBalance;
-
-  // iframe 加载后：恢复存档 + 定时存档
-  frame.addEventListener('load', function(){
-    if (!plinkoRestored) { plinkoRestored = true; loadFromServer(); }
-    if (!plinkoSaveTimer) plinkoSaveTimer = setInterval(saveToServer, autoSaveInterval);
-  });
-
-  // startGame
-  window.startGame = function(){
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('gameView').classList.add('active');
-    if (!plinkoSaveTimer) plinkoSaveTimer = setInterval(saveToServer, autoSaveInterval);
-  };
-
-  // 唯一实时更新源：iframe postMessage
-  window.addEventListener('message', function(e){
-    if (!e.data) return;
-    if (e.data.type==='plinko_ball' && uid > 0) {
-      var d = e.data;
-      var xhr = new XMLHttpRequest();
-      xhr.open('POST', '?plugin=wx_games&game=plinko&plinko_action=log_ball', true);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.send(JSON.stringify({betAmount:d.betAmount,multiplier:d.multiplier,payout:d.payout,profit:d.profit,risk:d.risk,rowCount:d.rowCount,binIndex:d.binIndex}));
-    }
-    if (e.data.type==='plinko_balance') {
-      if (uid > 0) updateBalance(e.data.balance);
-    }
-  });
-
-  // beforeunload + visibilitychange 同步保存
-  function forceSave() {
-    if (uid <= 0) return; var stats = getGameStats(); if (!stats) return;
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '?plugin=wx_games&game=plinko&plinko_action=save', false);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    try { xhr.send(JSON.stringify(stats)); } catch(e) {}
-  }
-  window.addEventListener('beforeunload', forceSave);
-  document.addEventListener('visibilitychange', function(){ if (document.hidden) forceSave(); });
-})();
+// ========== 开始游戏（原生渲染版） ==========
+window.startGame = function(){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('gameView').classList.add('active');
+  if(typeof initPlinko === 'function') initPlinko();
+};
 </script>
 
 <!-- 商城/背包逻辑（完全移植 ddz） -->
 <script>
 // ========== EMLOG 配置 ==========
 window.EMLOG_CONFIG = {
-    leaderboardApi: '<?php echo $base_url; ?>?plugin=wx_games&game=plinko'
+    leaderboardApi: window.__plinko.shop_api
 };
-window.WX_PLINKO_USER_SCORE = <?php echo ($current_user ? json_encode(['score'=>$saved_balance]) : 'null'); ?>;
-window.WX_PLINKO_EMLOG_CREDITS = <?php echo $current_user ? $emlog_credits : 0; ?>;
+window.WX_PLINKO_USER_SCORE = {score: window.__plinko.score};
+window.WX_PLINKO_EMLOG_CREDITS = window.__plinko.emlog_credits;
+// 公告和最近更新（从 __plinko 渲染）
+(function(){
+  function renderText(txt){
+    if(!txt) return '';
+    return txt.split(String.fromCharCode(10)).map(function(l){return l.trim()?l.trim()+'<br>':'';}).join('');
+  }
+  var n = document.getElementById('noticeBody');
+  var u = document.getElementById('updatesBody');
+  if(n) n.innerHTML = renderText(window.__plinko.notice);
+  if(u) u.innerHTML = renderText(window.__plinko.updates);
+})();
 
 // ========== 道具类型映射 ==========
 var SHOP_TYPE_NAMES = {
     'title_colored': '昵称变色', 'title_effect': '昵称特效', 'card_back': '牌背皮肤',
     'emoticon': '专属表情', 'bomb_effect': '炸弹特效', 'score_buff': '积分加成卡',
     'title_badge': '称号徽章', 'plinko_skin': '弹珠皮肤', 'plinko_theme': '钉阵主题',
-    'plinko_coin_pack': 'H5弹珠币包'
+    'plinko_coin_pack': '弹珠数量', 'member_unlock': '成员解锁券'
 };
 var SHOP_TYPE_ICONS = {
     'title_colored': '🎨', 'title_effect': '✨', 'card_back': '🃏', 'emoticon': '😎',
     'bomb_effect': '💥', 'score_buff': '⚡', 'title_badge': '👑',
-    'plinko_skin': '🎱', 'plinko_theme': '🌈', 'plinko_coin_pack': '👑'
+    'plinko_skin': '🎱', 'plinko_theme': '🌈', 'plinko_coin_pack': '💰',
+    'member_unlock': '🔓'
 };
 
 // ========== 反馈弹窗 ==========
@@ -465,7 +393,7 @@ var ShopManager = {
                 try {
                     var r = JSON.parse(xhr2.responseText);
                     if (r.code===0 && r.data && r.data.credits != null) {
-                        window.WX_PLINKO_EMLOG_CREDITS = r.data.credits;
+                        window.WX_PLINKO_EMLOG_CREDITS = window.__plinko.emlog_credits;
                         if (ecEl) ecEl.textContent = r.data.credits;
                     }
                 } catch(e) {}
@@ -616,7 +544,7 @@ var ShopManager = {
                                     try {
                                         var rr = JSON.parse(ecXhr.responseText);
                                         if (rr.code===0 && rr.data && rr.data.credits != null) {
-                                            window.WX_PLINKO_EMLOG_CREDITS = rr.data.credits;
+                                            window.WX_PLINKO_EMLOG_CREDITS = window.__plinko.emlog_credits;
                                             var ecEl = document.getElementById('shopEmlogCredits');
                                             if (ecEl) ecEl.textContent = rr.data.credits;
                                         }
@@ -631,10 +559,10 @@ var ShopManager = {
                     }
                 } catch(e) { showShopFeedback('❌', '网络错误', '请检查网络连接后重试'); }
             }
-        };
+        }
         xhr.send(fd);
     }
-};
+}
 
 // ========== 背包管理器（移植自 ddz） ==========
 var InventoryManager = {
@@ -743,46 +671,33 @@ var InventoryManager = {
                 try {
                     var data = JSON.parse(xhr.responseText);
                     if (data.code===0) {
-                    var payload = data.data || data; // 兼容嵌套/扁平
-                    var isCoinPack = payload.item_type === 'plinko_coin_pack';
+                        var payload = data.data || data;
+                        var isCoinPack = payload.item_type === 'plinko_coin_pack';
                         showShopFeedback('✅', isCoinPack ? '兑换成功' : '已激活', payload.msg || '操作成功');
                         InventoryManager.refreshItems();
                         if (typeof loadPlayerEffects === 'function') loadPlayerEffects();
                         if (isCoinPack && payload.new_balance != null) {
-                            // 写 plinko_restore + 写 balance（双保险），然后 reload iframe 让游戏重读
-                            try {
-                                var f = document.getElementById('plinkoFrame');
-                                if (f && f.contentWindow) {
-                                    f.contentWindow.localStorage.setItem('plinko_restore', JSON.stringify({balance: payload.new_balance}));
-                                    f.contentWindow.localStorage.setItem('plinko_balance', String(payload.new_balance));
-                                    f.contentWindow.location.reload();
-                                }
-                            } catch(e) { console.error('[plinko] reload failed:', e); }
-                            localStorage.setItem('plinko_balance', String(payload.new_balance));
-                            window.WX_PLINKO_USER_SCORE = {score: payload.new_balance};
-                            // 更新导航栏 + 欢迎页
-                            var navEl = document.getElementById('navBalance');
-                            var welEl = document.getElementById('welcomeScore');
-                            var val = Math.round(Number(payload.new_balance) * 10) / 10;
-                            var txt = val % 1 === 0 ? String(val) : val.toFixed(1);
-                            if (navEl) navEl.textContent = txt;
-                            if (welEl) welEl.textContent = txt;
-                            // 也调全局函数（IIFE 内部版）
-                            if (typeof _plinkoUpdateBalance === 'function') {
-                                _plinkoUpdateBalance(payload.new_balance);
-                            } else {
+                            // 原生渲染：直接更新游戏余额
+                            if (typeof balance !== 'undefined') {
+                                balance = payload.new_balance;
+                                if (typeof updateUI === 'function') updateUI();
                             }
                         }
+                        // 同步导航栏 + 欢迎页
+                        var navEl = document.getElementById('navBalance');
+                        var welEl = document.getElementById('welcomeScore');
+                        if (navEl) navEl.textContent = payload.new_balance;
+                        if (welEl) welEl.textContent = payload.new_balance;
                     } else {
                         console.error('[plinko] useItem failed:', data);
                         showShopFeedback('❌', '使用失败', data.message||'未知错误');
                     }
                 } catch(e) {
-                    console.error('[plinko] useItem parse error:', e, 'responseText:', xhr.responseText.slice(0,200));
+                    console.error('[plinko] useItem parse error:', e);
                     showShopFeedback('❌', '网络错误', '请重试');
                 }
             } else if (xhr.readyState===4) {
-                console.error('[plinko] useItem HTTP error:', xhr.status, xhr.responseText.slice(0,200));
+                console.error('[plinko] useItem HTTP error:', xhr.status);
                 showShopFeedback('❌', '网络错误', 'HTTP ' + xhr.status);
             }
         };
@@ -874,14 +789,15 @@ function showScoreLog() {
                     return;
                 }
                 list.innerHTML = logs.map(function(l) {
-                    var cls = l.profit>=0 ? 'color:#2ecc71;' : 'color:#e74c3c;';
+                    var cls = l.profit>=0 ? 'color:#4aa36b' : 'color:#e0554a';
+                    var sign = l.profit>=0?'+':'';
                     var fmtB = function(n){n=Number(n)||0; return n%1===0?n:n.toFixed(1);};
-                    return '<div class="leaderboard-item" style="justify-content:space-between;gap:10px;">'
-                        + '<span style="font-size:11px;color:#aaa;">' + l.time + '</span>'
-                        + '<span style="font-size:13px;">' + l.risk + '·' + l.rows + '行</span>'
-                        + '<span style="font-size:11px;">投' + fmtB(l.bet) + '</span>'
-                        + '<span style="font-size:12px;">×' + fmtB(l.multiplier) + '</span>'
-                        + '<span style="font-weight:bold;' + cls + '">' + (l.profit>=0?'+':'') + fmtB(l.profit) + '</span>'
+                    return '<div class="score-log-item" style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);">'
+                        + '<span style="font-size:12px;color:#aaa;min-width:55px;">' + (l.time||'').substring(0,5) + '</span>'
+                        + '<span style="font-size:11px;background:rgba(255,255,255,0.06);padding:2px 8px;border-radius:10px;margin:0 4px;">' + l.risk + '·' + l.rows + '行</span>'
+                        + '<span style="font-size:12px;flex:1;text-align:right;">获奖 ×' + fmtB(l.multiplier) + '</span>'
+                        + '<span style="font-size:11px;color:#8f867a;margin:0 8px;">投 ' + fmtB(l.bet) + '</span>'
+                        + '<span style="font-weight:bold;' + cls + ';min-width:70px;text-align:right;">' + sign + fmtB(l.profit) + '</span>'
                         + '</div>';
                 }).join('');
             } catch(e) { list.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:30px;">加载失败</div>'; }
@@ -895,30 +811,23 @@ window.WX_PLINKO_PLAYER_EFFECTS = {};
 async function loadPlayerEffects() {
     if (!<?php echo $current_user?'true':'false' ?>) return {};
     try {
-        var xhr = new XMLHttpRequest();
-        await new Promise(function(resolve, reject) {
-            xhr.open('GET', EMLOG_CONFIG.leaderboardApi + '&plinko_action=get_active_effects', true);
-            xhr.onreadystatechange = function() { if (xhr.readyState===4) resolve(); };
-            xhr.send();
-        });
-        if (xhr.status!==200) return {};
-        var data = JSON.parse(xhr.responseText);
-        if (data.code!==0 || !data.data) return {};
-        var effects = {};
+        const res = await fetch(EMLOG_CONFIG.leaderboardApi + '&plinko_action=get_active_effects', { credentials: 'include' });
+        const data = await res.json();
+        if (data.code !== 0 || !data.data) return {};
+        const effects = {};
         data.data.forEach(function(item) {
             try {
-                var eff = (typeof item.effect_data==='string') ? JSON.parse(item.effect_data) : item.effect_data;
-                if (item.item_type==='title_colored' && eff.color) effects.titleColor = eff.color;
-                if (item.item_type==='title_effect' && eff.effect) {
+                const eff = (typeof item.effect_data === 'string') ? JSON.parse(item.effect_data) : item.effect_data;
+                if (item.item_type === 'title_colored' && eff.color) effects.titleColor = eff.color;
+                if (item.item_type === 'title_effect' && eff.effect) {
                     effects.titleEffect = eff.effect;
                     if (eff.color) effects.titleEffectColor = eff.color;
                 }
-                if (item.item_type==='title_badge' && eff.badge) effects.titleBadge = eff.badge;
+                if (item.item_type === 'title_badge' && eff.badge) effects.titleBadge = eff.badge;
             } catch(e) {}
         });
         window.WX_PLINKO_PLAYER_EFFECTS = effects;
-        // 刷新欢迎页与导航栏昵称
-        var nm = '<?php echo $current_user ? addslashes(htmlspecialchars($current_user['nickname'])) : ''; ?>';
+        var nm = window.__plinko.nickname;
         if (nm) {
             document.getElementById('welcomeName').innerHTML = renderPlayerName(nm);
             document.getElementById('navUserName').innerHTML = renderPlayerName(nm);
@@ -948,6 +857,12 @@ function renderPlayerName(name) {
 
 // 页面加载时获取效果
 loadPlayerEffects();
+</script>
+<script>
+(function(){if(localStorage.getItem("wx_games_player_on")!=="1"||document.getElementById("myhk"))return;
+var s1=document.createElement("script");s1.type="text/javascript";s1.id="myhk";s1.src="https://myhkw.cn/api/player/1733906404100";s1.setAttribute("key","1733906404100");s1.setAttribute("m","1");document.body.appendChild(s1);
+if(!document.querySelector("script[src*=\"myhkw.cn/player/js/jquery\"]")){var s2=document.createElement("script");s2.type="text/javascript";s2.src="https://myhkw.cn/player/js/jquery.min.js";document.body.appendChild(s2)}
+})();
 </script>
 </body>
 </html>

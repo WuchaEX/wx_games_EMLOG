@@ -2042,3 +2042,7 @@ body {
     opacity: 0.15;
     pointer-events: none;
 }
+@media (max-width:900px) {
+    .nav-home-btn{padding:0 6px;font-size:0}.nav-home-btn::before{content:"🏠";font-size:14px}
+    .mj-nav-title{display:none !important}
+}

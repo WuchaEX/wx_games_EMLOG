@@ -105,11 +105,7 @@ if ($current_user) {
                     <span class="nav-btn-icon">🏆</span>
                     <span class="nav-btn-text">排行</span>
                 </button>
-                <button class="nav-btn hidden" id="btnNewGame">
-                    <span class="nav-btn-icon">🔄</span>
-                    <span class="nav-btn-text">新游戏</span>
-                </button>
-                <a href="<?php echo BLOG_URL; ?>" class="nav-home-btn" id="navHomeBtn">返回首页</a>
+                <a href="?plugin=wx_games" class="nav-home-btn" id="navHomeBtn">返回大厅</a>
             </div>
         </div>
     </nav>
@@ -531,7 +527,7 @@ if ($current_user) {
 
         // ==================== 导航栏游戏UI控制 ====================
         function toggleNavGameUI(show) {
-            const ids = ['navUserInfo', 'navScoreBox', 'btnLeaderboard', 'btnNewGame'];
+            const ids = ['navUserInfo', 'navScoreBox', 'btnLeaderboard'];
             ids.forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
@@ -1661,35 +1657,7 @@ if ($current_user) {
             }
         });
 
-        document.getElementById('btnNewGame').addEventListener('click', () => {
-            // 如果游戏进行中，先确认惩罚
-            if (gameInProgress && currentUser) {
-                var multi = gameState.multiplier || 1;
-                var baseBet = EMLOG_CONFIG.baseBet || 100;
-                var penalty = baseBet * multi * (EMLOG_CONFIG.penaltyMultiplier || 1);
-                var msg = '⚠️ 放弃当前对局\n\n';
-                msg += '开启新游戏、刷新页面、退出页面时，本局即算失败。\n';
-                msg += '计算公式：底分' + baseBet + ' × 游戏倍率(' + multi + ') × 惩罚系数(' + (EMLOG_CONFIG.penaltyMultiplier || 1).toFixed(1) + ')\n';
-                msg += '将扣除 ' + penalty + ' 积分。\n\n';
-                msg += '确定要放弃吗？';
-
-                if (!confirm(msg)) return;
-
-                // 发送惩罚信号
-                navigator.sendBeacon('?plugin=wx_games&game=ddz&wxddz_signal=penalty&points=' + penalty);
-
-                // 本地更新积分显示
-                gameState.playerScore -= penalty;
-                document.getElementById('playerScore').textContent = gameState.playerScore;
-
-                // 标记游戏结束
-                gameInProgress = false;
-            }
-
-            document.getElementById('resultModal').classList.add('hidden');
-            startGame();
-        });
-
+        // 开始新一局
         document.getElementById('btnPlayAgain').addEventListener('click', () => {
             document.getElementById('resultModal').classList.add('hidden');
             initGame();

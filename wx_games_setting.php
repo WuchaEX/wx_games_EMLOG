@@ -14,7 +14,9 @@ $wxg_game = isset($_GET['game']) ? preg_replace('/[^a-z_]/', '', $_GET['game']) 
 // ============================================================
 // 顶层加载 admin 文件（在 plugin_setting_view() 之前）
 // ============================================================
-if ($wxg_game === 'ddz') {
+if ($wxg_game === 'shop') {
+    require_once __DIR__ . '/wx_games_shop_admin.php';
+} elseif ($wxg_game === 'ddz') {
     require_once __DIR__ . '/wx_games_ddz_fn.php';
     require_once __DIR__ . '/wx_games_ddz_admin.php';
 } elseif ($wxg_game === 'mj') {
@@ -41,9 +43,15 @@ function plugin_setting_view() {
 .wxg-nav a{display:inline-block;padding:10px 22px;text-decoration:none;font-size:0.95rem;color:#666;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
 .wxg-nav a:hover{color:#e17055}
 .wxg-nav a.active{color:#e17055;border-bottom-color:#e17055;font-weight:600}
+/* 统一下拉框样式（覆盖 Emlog 主题默认 padding） */
+.wx-card select.form-control,
+.wx-card input.form-control,
+.wx-card textarea.form-control,
+select.form-control{padding:5px 8px;min-width:0}
 </style>
 <div class="wxg-nav">
     <a href="<?= $base_url ?>" class="<?= empty($game) ? 'active' : '' ?>">🏠 大厅管理</a>
+    <a href="<?= $base_url ?>&game=shop" class="<?= $game === 'shop' ? 'active' : '' ?>">🛒 商城</a>
     <?php foreach ($wx_games_list as $key => $g): ?>
     <a href="<?= $base_url ?>&game=<?= $key ?>" class="<?= $game === $key ? 'active' : '' ?>">
         <?= htmlspecialchars($g['icon'] . ' ' . $g['name']) ?>
@@ -52,7 +60,13 @@ function plugin_setting_view() {
 </div>
 
 <?php
-    if ($game === 'ddz') {
+    if ($game === 'shop') {
+        if (function_exists('wx_shop_admin_render')) {
+            wx_shop_admin_render();
+        } else {
+            echo '<div class="alert alert-danger">shop admin 加载失败</div>';
+        }
+    } elseif ($game === 'ddz') {
         // admin 文件已在顶层加载（fn.php + admin.php）
         // 函数和 global 变量已就绪
         if (function_exists('wx_ddz_admin_render')) {

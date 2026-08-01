@@ -45,25 +45,202 @@ function wx_plinko_save_account($uid, $data) {
     $table = DB_PREFIX . 'wx_plinko_accounts';
     $ts = isset($data['updated_at']) ? intval($data['updated_at']) : time();
 
-    // 只 UPDATE 实际传入的字段，防止覆蓋未传入字段为 0
+    // 只 UPDATE 实际传入的字段
     $sets = ['`updated_at` = ' . $ts];
     if (isset($data['balance']))      $sets[] = '`balance` = ' . floatval($data['balance']);
     if (isset($data['total_bet']))    $sets[] = '`total_bet` = ' . floatval($data['total_bet']);
     if (isset($data['total_payout'])) $sets[] = '`total_payout` = ' . floatval($data['total_payout']);
     if (isset($data['play_count']))   $sets[] = '`play_count` = ' . intval($data['play_count']);
+    if (isset($data['member_exp']))   $sets[] = '`member_exp` = ' . intval($data['member_exp']);
+    if (isset($data['members']))      $sets[] = "`members` = '" . addslashes(json_encode($data['members'], JSON_UNESCAPED_UNICODE)) . "'";
 
-    // INSERT 必须提供所有列（默认值兜底）
-    $balance    = isset($data['balance'])      ? floatval($data['balance'])      : 200;
+    // INSERT 值 — 必须算好，否则 PHP 未定义变量导致 VALUES() 空缺
+    $cfg = wx_plinko_get_config();
+    $initBalance = isset($cfg['init_balance']) ? intval($cfg['init_balance']) : 200;
+    $balance    = isset($data['balance'])      ? floatval($data['balance'])      : $initBalance;
     $total_bet  = isset($data['total_bet'])    ? floatval($data['total_bet'])    : 0;
     $total_payout = isset($data['total_payout']) ? floatval($data['total_payout']) : 0;
     $play_count = isset($data['play_count'])   ? intval($data['play_count'])   : 0;
+    $member_exp = isset($data['member_exp']) ? intval($data['member_exp']) : 0;
+    $members    = isset($data['members']) ? "'" . addslashes(json_encode($data['members'], JSON_UNESCAPED_UNICODE)) . "'" : "NULL";
 
-    $db->query("INSERT INTO `$table` (`uid`,`balance`,`total_bet`,`total_payout`,`play_count`,`updated_at`)
-        VALUES (" . intval($uid) . ",$balance,$total_bet,$total_payout,$play_count,$ts)
+    $db->query("INSERT INTO `$table` (`uid`,`balance`,`total_bet`,`total_payout`,`play_count`,`member_exp`,`members`,`updated_at`)
+        VALUES (" . intval($uid) . ",$balance,$total_bet,$total_payout,$play_count,$member_exp,$members,$ts)
         ON DUPLICATE KEY UPDATE " . implode(', ', $sets));
 }
 
 // ============================================================
+// ========== 成员系统辅助函数 ==========
+define('PLINKO_MEMBER_KEYS', ['boram', 'qri', 'soyeon', 'eunjung', 'hyomin', 'jiyeon']);
+
+function wx_plinko_get_default_members() {
+    $m = [];
+    foreach (PLINKO_MEMBER_KEYS as $k) {
+        $m[$k] = ['unlocked' => false, 'level' => 1]; // 默认 Lv1（匹配 config.levels[0]）
+    }
+    return $m;
+}
+
+function wx_plinko_get_members($uid) {
+    $row = wx_plinko_get_account($uid);
+    if (!$row || empty($row['members'])) return wx_plinko_get_default_members();
+    $data = json_decode($row['members'], true);
+    if (!is_array($data)) return wx_plinko_get_default_members();
+    // 修复旧用户：level=0 统一升为 level=1
+    foreach (PLINKO_MEMBER_KEYS as $k) {
+        if (!isset($data[$k])) $data[$k] = ['unlocked' => false, 'level' => 1];
+        if ($data[$k]['level'] <= 0) $data[$k]['level'] = 1;
+    }
+    return $data;
+}
+
+function wx_plinko_get_member_exp($uid) {
+    $row = wx_plinko_get_account($uid);
+    return $row ? intval($row['member_exp']) : 0;
+}
+
+function wx_plinko_add_exp($uid, $amount = 1) {
+    $row = wx_plinko_get_account($uid);
+    $cur = $row ? intval($row['member_exp']) : 0;
+    $add = max(1, (int)round($amount));
+    wx_plinko_save_account($uid, ['member_exp' => $cur + $add]);
+    return $cur + $add;
+}
+
+function wx_plinko_member_level_up($uid, $memberKey, $expCost, $newLevel) {
+    if (!in_array($memberKey, PLINKO_MEMBER_KEYS)) return false;
+    $row = wx_plinko_get_account($uid);
+    if (!$row) return false;
+    $curExp = intval($row['member_exp']);
+    if ($curExp < $expCost) return false;
+    $members = wx_plinko_get_members($uid);
+    $members[$memberKey]['level'] = $newLevel;
+    wx_plinko_save_account($uid, ['member_exp' => $curExp - $expCost, 'members' => $members]);
+    return true;
+}
+
+function wx_plinko_member_unlock($uid, $memberKey) {
+    if (!in_array($memberKey, PLINKO_MEMBER_KEYS)) return false;
+    $members = wx_plinko_get_members($uid);
+    $members[$memberKey]['unlocked'] = true;
+    $members[$memberKey]['level'] = 1; // 解锁后默认 Lv1（匹配 config.levels[0].level=1）
+    wx_plinko_save_account($uid, ['members' => $members]);
+    return true;
+}
+
+// ========== 成员配置（emlog_storage.wx_plinko.member_config） ==========
+function wx_plinko_get_member_config() {
+    $defaults = [
+        'boram' => [
+            'name' => '全宝蓝', 'avatar' => 'boram.jpg', 'skill_desc' => '低倍槽退还下注额',
+                        'levels' => [
+                ['level' => 1, 'exp_cost' => 0,   'params' => ['spacing' => 0]],
+                ['level' => 2, 'exp_cost' => 100, 'params' => ['spacing' => 0.05]],
+                ['level' => 3, 'exp_cost' => 300, 'params' => ['spacing' => 0.10]],
+                ['level' => 4, 'exp_cost' => 600, 'params' => ['spacing' => 0.15]],
+                ['level' => 5, 'exp_cost' => 1000,'params' => ['spacing' => 0.20]],
+            ]
+        ],
+        'qri' => [
+            'name' => '李居丽', 'avatar' => 'qri.jpg', 'skill_desc' => '钉反弹系数增加',
+                        'levels' => [
+                ['level' => 1, 'exp_cost' => 0,   'params' => ['restitution' => 0]],
+                ['level' => 2, 'exp_cost' => 100, 'params' => ['restitution' => 0.02]],
+                ['level' => 3, 'exp_cost' => 300, 'params' => ['restitution' => 0.04]],
+                ['level' => 4, 'exp_cost' => 600, 'params' => ['restitution' => 0.06]],
+                ['level' => 5, 'exp_cost' => 1000,'params' => ['restitution' => 0.08]],
+            ]
+        ],
+        'soyeon' => [
+            'name' => '朴素妍', 'avatar' => 'soyeon.jpg', 'skill_desc' => '落槽后随机倍率加成',
+                        'levels' => [
+                ['level' => 1, 'exp_cost' => 0,   'params' => ['prob' => 0, 'min' => 0.8, 'max' => 1.5]],
+                ['level' => 2, 'exp_cost' => 100, 'params' => ['prob' => 0.05,'min' => 0.8, 'max' => 1.5]],
+                ['level' => 3, 'exp_cost' => 300, 'params' => ['prob' => 0.10,'min' => 0.8, 'max' => 1.6]],
+                ['level' => 4, 'exp_cost' => 600, 'params' => ['prob' => 0.15,'min' => 0.8, 'max' => 1.7]],
+                ['level' => 5, 'exp_cost' => 1000,'params' => ['prob' => 0.20,'min' => 0.8, 'max' => 1.8]],
+            ]
+        ],
+        'eunjung' => [
+            'name' => '咸恩静', 'avatar' => 'eunjung.jpg', 'skill_desc' => '概率额外弹珠',
+                        'levels' => [
+                ['level' => 1, 'exp_cost' => 0,   'params' => ['prob' => 0]],
+                ['level' => 2, 'exp_cost' => 100, 'params' => ['prob' => 0.04]],
+                ['level' => 3, 'exp_cost' => 300, 'params' => ['prob' => 0.08]],
+                ['level' => 4, 'exp_cost' => 600, 'params' => ['prob' => 0.12]],
+                ['level' => 5, 'exp_cost' => 1000,'params' => ['prob' => 0.16]],
+            ]
+        ],
+        'hyomin' => [
+            'name' => '朴孝敏', 'avatar' => 'hyomin.jpg', 'skill_desc' => '初速度↓+投球间隔↓',
+                        'levels' => [
+                ['level' => 1, 'exp_cost' => 0,   'params' => ['speed' => 0, 'interval' => 0]],
+                ['level' => 2, 'exp_cost' => 100, 'params' => ['speed' => 0.03,'interval' => 50]],
+                ['level' => 3, 'exp_cost' => 300, 'params' => ['speed' => 0.06,'interval' => 100]],
+                ['level' => 4, 'exp_cost' => 600, 'params' => ['speed' => 0.09,'interval' => 150]],
+                ['level' => 5, 'exp_cost' => 1000,'params' => ['speed' => 0.12,'interval' => 200]],
+            ]
+        ],
+        'jiyeon' => [
+            'name' => '朴智妍', 'avatar' => 'jiyeon.jpg', 'skill_desc' => '起始位置偏移调整',
+                        'levels' => [
+                ['level' => 1, 'exp_cost' => 0,   'params' => ['offset' => 0]],
+                ['level' => 2, 'exp_cost' => 100, 'params' => ['offset' => 3]],
+                ['level' => 3, 'exp_cost' => 300, 'params' => ['offset' => 6]],
+                ['level' => 4, 'exp_cost' => 600, 'params' => ['offset' => 9]],
+                ['level' => 5, 'exp_cost' => 1000,'params' => ['offset' => 12]],
+            ]
+        ],
+        // EXP 获取设置（全局，非单个成员）
+        'exp_mode' => 'ball',    // 'ball' = 每球1EXP, 'payout' = 落槽得分=EXP
+        'exp_multiplier' => 1.0, // 全局经验倍率
+    ];
+    try {
+        $storage = Storage::getInstance('wx_plinko');
+        $saved = $storage->getValue('member_config');
+        if (is_array($saved)) {
+            foreach (PLINKO_MEMBER_KEYS as $k) {
+                if (isset($saved[$k]) && is_array($saved[$k])) {
+                    // 保留原始 defaults 的 levels（merge 前的兜底）
+                    $defaultLevels = isset($defaults[$k]['levels']) ? $defaults[$k]['levels'] : [];
+                    $defaults[$k] = array_merge($defaults[$k], $saved[$k]);
+                    // 兜底：每个 level 的 params 不能为空（用原始 defaults，不是已 merge 的）
+                    if (isset($saved[$k]['levels']) && is_array($saved[$k]['levels'])) {
+                        $mergedLevels = [];
+                        foreach ($saved[$k]['levels'] as $li => $lv) {
+                            $defaultParams = isset($defaultLevels[$li]['params']) ? $defaultLevels[$li]['params'] : [];
+                            $lvParams = isset($lv['params']) && is_array($lv['params']) && !empty($lv['params']) ? $lv['params'] : $defaultParams;
+                            $mergedLevels[] = [
+                                'level' => (int)$lv['level'],
+                                'exp_cost' => (int)$lv['exp_cost'],
+                                'params' => $lvParams,
+                            ];
+                        }
+                        $defaults[$k]['levels'] = $mergedLevels;
+                    }
+                }
+            }
+            // 合并 EXP 全局设置（非成员字段）
+            if (isset($saved['exp_mode'])) $defaults['exp_mode'] = $saved['exp_mode'];
+            if (isset($saved['exp_multiplier'])) $defaults['exp_multiplier'] = floatval($saved['exp_multiplier']);
+        }
+    } catch (Throwable $e) {}
+    return $defaults;
+}
+
+// 获取指定成员指定等级的效果 params
+function wx_plinko_get_member_level_params($memberKey, $level) {
+    if ($level <= 1) return [];
+    $cfg = wx_plinko_get_member_config();
+    if (!isset($cfg[$memberKey]['levels'])) return [];
+    foreach ($cfg[$memberKey]['levels'] as $lv) {
+        if ((int)$lv['level'] === (int)$level) {
+            return isset($lv['params']) ? $lv['params'] : [];
+        }
+    }
+    return [];
+}
+
 // AJAX 路由分发（由 wx_games.php 调用）
 // ============================================================
 function wx_plinko_route_ajax($action) {
@@ -81,7 +258,6 @@ function wx_plinko_route_ajax($action) {
     }
 
     switch ($action) {
-        case 'save':           wx_plinko_api_save();            break;
         case 'load':           wx_plinko_api_load();            break;
         case 'get_inventory':  wx_plinko_api_get_inventory();  break;
         case 'get_shop':       wx_plinko_api_get_shop_items();  break;
@@ -94,6 +270,8 @@ function wx_plinko_route_ajax($action) {
         case 'get_ranking':     wx_plinko_api_get_ranking();     break;
         case 'get_score_log':   wx_plinko_api_get_score_log();   break;
         case 'log_ball':       wx_plinko_api_log_ball();       break;
+        case 'get_members':    wx_plinko_api_get_members();    break;
+        case 'level_up':       wx_plinko_api_level_up();       break;
         default:
             wx_games_error('未知操作');
             return;
@@ -115,44 +293,6 @@ function wx_plinko_check_user() {
 }
 
 // ============================================================
-// API: save - 保存游戏存档
-// ============================================================
-function wx_plinko_api_save() {
-    $user = wx_plinko_check_user();
-    if (!$user) {
-        wx_games_error('未登录');
-        return;
-    }
-    $uid = intval($user['uid']);
-
-    $raw = file_get_contents('php://input');
-    $data = json_decode($raw, true);
-    if (!$data) {
-        wx_games_error('无效的请求数据');
-        return;
-    }
-
-    $balance      = isset($data['balance'])      ? floatval($data['balance'])      : 200;
-    $total_bet    = isset($data['total_bet'])    ? intval($data['total_bet'])    : 0;
-    $total_payout = isset($data['total_payout']) ? intval($data['total_payout']) : 0;
-    $play_count   = isset($data['play_count'])   ? intval($data['play_count'])   : 0;
-
-    $save_data = [
-        'balance'      => $balance,
-        'total_bet'    => $total_bet,
-        'total_payout' => $total_payout,
-        'play_count'   => $play_count,
-        'updated_at'   => time(),
-    ];
-
-    wx_plinko_save_account($uid, $save_data);
-
-    wx_games_ok(['saved_at' => $save_data['updated_at']]);
-    return;
-}
-
-// ============================================================
-// API: load - 加载游戏存档
 // ============================================================
 function wx_plinko_api_load() {
     $user = wx_plinko_check_user();
@@ -269,6 +409,7 @@ function wx_plinko_api_get_shop_items() {
             'owned'       => $owned,
         ];
     }
+    // member_unlock 价格完全由 shop_items 表的 price_emlog/price_game 控制（后台商城管理设置）
     wx_games_ok(['items' => $items]);
     return;
 }
@@ -311,6 +452,21 @@ function wx_plinko_api_use_item() {
     $global_types   = ['title_colored', 'title_effect'];
     $cosmetic_types = ['title_colored', 'title_effect', 'card_back', 'emoticon', 'title_badge', 'plinko_skin', 'plinko_theme'];
 
+    if ($item_type === 'member_unlock') {
+        $eff = json_decode(stripslashes($row['effect_data']), true);
+        $memberKey = is_array($eff) && isset($eff['member']) ? $eff['member'] : '';
+        if (!in_array($memberKey, PLINKO_MEMBER_KEYS)) { wx_games_error('无效成员'); return; }
+        // 限购 1 次：已解锁就拒绝
+        $existingMembers = wx_plinko_get_members($uid);
+        if (!empty($existingMembers[$memberKey]['unlocked'])) { wx_games_error('该成员已解锁，不可重复购买'); return; }
+        $members = wx_plinko_get_members($uid);
+        if (!empty($members[$memberKey]['unlocked'])) { wx_games_error('该成员已解锁'); return; }
+        wx_plinko_member_unlock($uid, $memberKey);
+        $db->query("UPDATE `$table_inv` SET `quantity` = GREATEST(`quantity` - 1, 0) WHERE `id` = $inv_id");
+        wx_games_ok(['msg' => '已解锁新成员！', 'item_type' => 'member_unlock', 'member' => $memberKey]);
+        return;
+    }
+
     if (in_array($item_type, $cosmetic_types, true)) {
         $db->query("UPDATE `$table_inv` i JOIN `$table_items` s ON i.`item_id` = s.`id`
             SET i.`is_active` = 0 WHERE i.`uid` = $uid AND s.`item_type` = '" . addslashes($item_type) . "'");
@@ -342,7 +498,9 @@ function wx_plinko_api_use_item() {
         $coins = is_array($eff) ? (isset($eff['coins']) ? intval($eff['coins']) : 0) : 0;
         if ($coins <= 0) { wx_games_error('道具配置错误'); return; }
         $acct = wx_plinko_get_account($uid);
-        $new_bal = ($acct ? floatval($acct['balance']) : 200) + $coins;
+        $cfg = wx_plinko_get_config();
+        $initBal = isset($cfg['init_balance']) ? intval($cfg['init_balance']) : 200;
+        $new_bal = ($acct ? floatval($acct['balance']) : $initBal) + $coins;
         wx_plinko_save_account($uid, ['balance' => $new_bal, 'updated_at' => time()]);
         $db->query("UPDATE `$table_inv` SET `quantity` = GREATEST(`quantity` - 1, 0) WHERE `id` = $inv_id");
         wx_games_ok(['msg' => '已兑换 +' . $coins . ' 弹珠', 'item_type' => 'plinko_coin_pack', 'new_balance' => $new_bal]);
@@ -388,7 +546,8 @@ function wx_plinko_api_purchase_item() {
         if ($balance < $price_plinko) { wx_games_error('弹珠币不足，需要' . $price_plinko . '币'); return; }
         $userModel->reduceCredits($uid, $price_emlog);
         if (function_exists('addCreditRecord')) {
-            addCreditRecord($uid, 'reduce', $price_emlog, 'plinko_buy_' . $item['name'] . '_' . time());
+            $game_title = (wx_plinko_get_config()['title'] ?? 'H5弹珠台');
+            addCreditRecord($uid, 'reduce', $price_emlog, $game_title . '_buy_' . $item['name'] . '_' . time());
         }
         wx_plinko_save_account($uid, ['balance' => $balance - $price_plinko, 'updated_at' => time()]);
     } elseif ($pay_type === 'emlog') {
@@ -399,7 +558,8 @@ function wx_plinko_api_purchase_item() {
         if ($credits < $price_emlog) { wx_games_error('站点积分不足，需要' . $price_emlog . '积分'); return; }
         $userModel->reduceCredits($uid, $price_emlog);
         if (function_exists('addCreditRecord')) {
-            addCreditRecord($uid, 'reduce', $price_emlog, 'plinko_buy_' . $item['name'] . '_' . time());
+            $game_title = (wx_plinko_get_config()['title'] ?? 'H5弹珠台');
+            addCreditRecord($uid, 'reduce', $price_emlog, $game_title . '_buy_' . $item['name'] . '_' . time());
         }
     } else { // plinko
         if ($price_plinko <= 0) { wx_games_error('该商品不支持弹珠币购买'); return; }
@@ -412,6 +572,23 @@ function wx_plinko_api_purchase_item() {
     // 写入背包
     $now = time();
     $table_inv = DB_PREFIX . 'wx_games_user_items';
+
+    // member_unlock 限购 1 次：购买时立即解锁，避免重复购买
+    if ($item['item_type'] === 'member_unlock') {
+        $eff = json_decode(stripslashes($item['effect_data']), true);
+        $memberKey = is_array($eff) && isset($eff['member']) ? $eff['member'] : '';
+        if (in_array($memberKey, PLINKO_MEMBER_KEYS)) {
+            $m = wx_plinko_get_members($uid);
+            if (!empty($m[$memberKey]['unlocked'])) {
+                wx_games_error('该成员已解锁，不可重复购买');
+                return;
+            }
+            wx_plinko_member_unlock($uid, $memberKey);
+            wx_games_ok(['msg' => '解锁成功！AI ' . ($memberKey) . ' 已加入可选伙伴', 'item_type' => $item_type, 'member' => $memberKey]);
+            return;
+        }
+    }
+
     if ($is_global) {
         $all_games = ['ddz', 'mj', 'niuniu', 'plinko'];
         foreach ($all_games as $g) {
@@ -441,8 +618,10 @@ function wx_plinko_api_get_my_rank() {
     if (!$user) { wx_games_error('未登录'); return; }
     $uid = intval($user['uid']);
     $row = wx_plinko_get_account($uid);
+    $cfg = wx_plinko_get_config();
+    $initBal = isset($cfg['init_balance']) ? intval($cfg['init_balance']) : 200;
     wx_games_ok([
-        'score'       => $row ? floatval($row['balance']) : 200,
+        'score'       => $row ? floatval($row['balance']) : $initBal,
         'total_bet'   => $row ? floatval($row['total_bet']) : 0,
         'total_payout'=> $row ? floatval($row['total_payout']) : 0,
         'play_count'  => $row ? intval($row['play_count']) : 0,
@@ -558,14 +737,125 @@ function wx_plinko_api_log_ball() {
     $rowCount    = isset($data['rowCount'])   ? intval($data['rowCount'])   : 16;
     $binIndex    = isset($data['binIndex'])   ? intval($data['binIndex'])   : -1;
 
+    // Boram 效果：低倍槽退还「损失金额」的 spacing%（服务端权威）
+    if ($multiplier < 1 && $profit < 0) {
+        $members = wx_plinko_get_members($uid);
+        $boram = isset($members['boram']) ? $members['boram'] : null;
+        if ($boram && !empty($boram['unlocked']) && $boram['level'] > 0) {
+            $cfg = wx_plinko_get_member_config();
+            $spacing = 0;
+            foreach ($cfg['boram']['levels'] as $lv) {
+                if ((int)$lv['level'] === (int)$boram['level'] && isset($lv['params']['spacing'])) {
+                    $spacing = (float)$lv['params']['spacing'];
+                    break;
+                }
+            }
+            if ($spacing > 0) {
+                $loss = $bet - $payout; // 实际损失
+                $refund = round($loss * $spacing * 100) / 100;
+                $payout += $refund;
+                $profit += $refund;
+            }
+        }
+    }
+    // Soyeon 效果：随机倍率加成（服务端权威）
+    $members2 = wx_plinko_get_members($uid);
+    $soyeon = isset($members2['soyeon']) ? $members2['soyeon'] : null;
+    if ($soyeon && !empty($soyeon['unlocked']) && $soyeon['level'] > 0) {
+        $cfg2 = wx_plinko_get_member_config();
+        $prob = 0; $minR = 0.8; $maxR = 1.5;
+        foreach ($cfg2['soyeon']['levels'] as $lv) {
+            if ((int)$lv['level'] === (int)$soyeon['level']) {
+                $p = $lv['params'] ?? [];
+                $prob = isset($p['prob']) ? (float)$p['prob'] : 0;
+                $minR = isset($p['min']) ? (float)$p['min'] : 0.8;
+                $maxR = isset($p['max']) ? (float)$p['max'] : 1.5;
+                break;
+            }
+        }
+        if ($prob > 0 && (mt_rand(1, 10000) / 10000) < $prob) {
+            $randMult = $minR + (mt_rand(0, 9999) / 9999) * ($maxR - $minR);
+            $bonus = round($payout * ($randMult - 1) * 100) / 100;
+            $payout += $bonus;
+            $profit += $bonus;
+        }
+    }
+
     $db = Database::getInstance();
     $table = DB_PREFIX . 'wx_plinko_games';
     $db->query("INSERT INTO `$table` (`uid`, `bet`, `multiplier`, `payout`, `profit`, `risk`, `rows`, `bin`, `created_at`)
         VALUES ($uid, $bet, $multiplier, $payout, $profit, $risk, $rowCount, $binIndex, " . time() . ")");
 
-    // log_ball 不再写 balance（避免覆盖 admin 改分 / 币包加成）
-// balance 同步交给 save() 每 3 秒一次 + log_ball 只负责记球
+    // 服务端计算余额（DB 为唯一真相源，不信任客户端 localStorage）
+    $initBalance = isset($cfg['init_balance']) ? intval($cfg['init_balance']) : 200;
+    $acct = wx_plinko_get_account($uid);
+    $newBal = ($acct ? floatval($acct['balance']) : $initBalance) + $profit;
+    if ($newBal < 0) $newBal = 0;
+    wx_plinko_save_account($uid, ['balance' => $newBal, 'updated_at' => time()]);
 
-    wx_games_ok(['logged' => true]);
+    // 计算经验值（原始 Storage 直接读，绕过 static cache）
+    $storage = Storage::getInstance('wx_plinko');
+    $cfg = $storage->getValue('config');
+    $expMode = is_array($cfg) ? (isset($cfg['exp_mode']) ? $cfg['exp_mode'] : 'ball') : 'ball';
+    $expMult = is_array($cfg) ? (isset($cfg['exp_multiplier']) ? floatval($cfg['exp_multiplier']) : 1.0) : 1.0;
+    if ($expMode === 'payout') {
+        // payout 模式：按下注额（bet）计算，非落槽结算额（payout）
+        $expAmount = max(1, $bet) * $expMult;
+    } else {
+        $expAmount = 1 * $expMult;
+    }
+    $newExp = wx_plinko_add_exp($uid, $expAmount);
+
+    wx_games_ok(['logged' => true, 'balance' => $newBal, 'exp' => $newExp]);
+    return;
+}
+
+// ============================================================
+// API：get_members - 获取成员数据
+// ============================================================
+function wx_plinko_api_get_members() {
+    $user = wx_plinko_check_user();
+    if (!$user) { wx_games_error('未登录'); return; }
+    $uid = intval($user['uid']);
+    $members = wx_plinko_get_members($uid);
+    $exp = wx_plinko_get_member_exp($uid);
+    $cfg = wx_plinko_get_member_config();
+    $plinkoCfg = wx_plinko_get_config();
+    wx_games_ok([
+        'members' => $members,
+        'exp' => $exp,
+        'config' => $cfg,
+        'exp_mode' => isset($plinkoCfg['exp_mode']) ? $plinkoCfg['exp_mode'] : 'ball',
+        'exp_multiplier' => isset($plinkoCfg['exp_multiplier']) ? floatval($plinkoCfg['exp_multiplier']) : 1.0,
+    ]);
+    return;
+}
+
+// ============================================================
+// API：level_up - 成员升级
+// ============================================================
+function wx_plinko_api_level_up() {
+    $user = wx_plinko_check_user();
+    if (!$user) { wx_games_error('未登录'); return; }
+    $uid = intval($user['uid']);
+    $memberKey = isset($_POST['member']) ? preg_replace('/[^a-z]/', '', $_POST['member']) : '';
+    if (!in_array($memberKey, PLINKO_MEMBER_KEYS)) { wx_games_error('无效成员'); return; }
+    $members = wx_plinko_get_members($uid);
+    $curLevel = isset($members[$memberKey]['level']) ? intval($members[$memberKey]['level']) : 0;
+    $cfg = wx_plinko_get_member_config();
+    $levels = isset($cfg[$memberKey]['levels']) ? $cfg[$memberKey]['levels'] : [];
+    $nextLevel = $curLevel + 1;
+    $cost = 0;
+    foreach ($levels as $lv) {
+        if ((int)$lv['level'] === $nextLevel) { $cost = (int)$lv['exp_cost']; break; }
+    }
+    if ($cost === 0) { wx_games_error('已是最高级'); return; }
+    $curExp = wx_plinko_get_member_exp($uid);
+    if ($curExp < $cost) { wx_games_error('经验不足，需要 ' . $cost . ' EXP，当前 ' . $curExp); return; }
+    if (wx_plinko_member_level_up($uid, $memberKey, $cost, $nextLevel)) {
+        wx_games_ok(['level' => $nextLevel, 'exp' => $curExp - $cost]);
+    } else {
+        wx_games_error('升级失败');
+    }
     return;
 }
