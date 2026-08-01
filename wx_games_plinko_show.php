@@ -183,10 +183,6 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
           <span class="nav-btn-icon">🏆</span>
           <span class="nav-btn-text">排行</span>
         </button>
-        <button class="nav-btn" onclick="showScoreLog()">
-          <span class="nav-btn-icon">📜</span>
-          <span class="nav-btn-text">流水</span>
-        </button>
       <?php else: ?>
         <span class="nav-user-name" style="color:#fff">游客模式</span>
       <?php endif; ?>
@@ -299,6 +295,10 @@ window._plinko_uid = window.__plinko.uid;
   <div class="leaderboard-content" style="position:relative;">
     <button class="leaderboard-close" id="btnCloseRanking">&times;</button>
     <div class="leaderboard-title">🏆 弹珠排行榜</div>
+    <div style="display:flex;gap:4px;margin-bottom:12px;">
+      <button class="rank-tab active" data-tab="balance" style="flex:1;padding:6px 0;border:none;border-radius:8px;background:rgba(255,255,255,0.12);color:#ffd700;font-size:13px;cursor:pointer;">积分排行</button>
+      <button class="rank-tab" data-tab="exp" style="flex:1;padding:6px 0;border:none;border-radius:8px;background:rgba(255,255,255,0.06);color:#8f867a;font-size:13px;cursor:pointer;">EXP 排行</button>
+    </div>
     <div class="leaderboard-list" id="rankingList">
       <div style="text-align:center;color:#aaa;padding:30px;">加载中...</div>
     </div>
@@ -739,13 +739,16 @@ document.getElementById('btnCloseScoreLog').addEventListener('click', function()
 });
 
 // ========== 排行榜 ==========
-function showRanking() {
+function showRanking(type) {
+    type = type || 'balance';
     if (!<?php echo $current_user?'true':'false' ?>) { alert('请先登录'); return; }
     document.getElementById('rankingModal').classList.remove('hidden');
+    // Tab 激活态
+    document.querySelectorAll('.rank-tab').forEach(function(t){ t.className = 'rank-tab'+(t.dataset.tab===type?' active':''); t.style.background = t.dataset.tab===type?'rgba(255,255,255,0.12)':'rgba(255,255,255,0.06)'; t.style.color = t.dataset.tab===type?'#ffd700':'#8f867a'; });
     var list = document.getElementById('rankingList');
     list.innerHTML = '<div style="text-align:center;color:#aaa;padding:30px;">加载中...</div>';
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', EMLOG_CONFIG.leaderboardApi + '&plinko_action=get_ranking', true);
+    xhr.open('GET', EMLOG_CONFIG.leaderboardApi + '&plinko_action=get_ranking&type=' + type, true);
     xhr.onreadystatechange = function() {
         if (xhr.readyState===4 && xhr.status===200) {
             try {
@@ -759,10 +762,12 @@ function showRanking() {
   list.innerHTML = ranking.map(function(r, i) {
       var rank = i + 1;
       var badge = rank===1 ? '🥇' : rank===2 ? '🥈' : rank===3 ? '🥉' : rank;
+      var val = type==='exp' ? (r.exp||0) : r.balance;
+      var label = type==='exp' ? 'EXP' : '👑';
       return '<div class="leaderboard-item">'
           + '<span class="rank">' + badge + '</span>'
           + '<span style="flex:1;margin-left:10px;">' + (r.nickname||'未知') + '</span>'
-          + '<span style="font-weight:bold;color:#ffd700;">👑 ' + fmtB(r.balance) + '</span>'
+          + '<span style="font-weight:bold;color:#ffd700;">' + label + ' ' + fmtB(val) + '</span>'
           + '</div>';
   }).join('');
             } catch(e) { list.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:30px;">加载失败</div>'; }
@@ -770,6 +775,12 @@ function showRanking() {
     };
     xhr.send();
 }
+
+// Tab 点击
+document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('rank-tab')) return;
+    showRanking(e.target.dataset.tab);
+});
 
 // ========== 弹珠流水 ==========
 function showScoreLog() {

@@ -652,10 +652,12 @@ function wx_plinko_api_get_my_emlog_credits() {
 function wx_plinko_api_get_ranking() {
     $db = Database::getInstance();
     $table = DB_PREFIX . 'wx_plinko_accounts';
+    $type = isset($_GET['type']) && $_GET['type'] === 'exp' ? 'exp' : 'balance';
+    $order = $type === 'exp' ? '`member_exp`' : '`balance`';
     $ranking = [];
-    $rows = $db->query("SELECT `uid`, `balance` FROM `$table` ORDER BY `balance` DESC LIMIT 50");
+    $rows = $db->query("SELECT `uid`, `balance`, `member_exp` FROM `$table` WHERE " . ($type === 'exp' ? '`member_exp` > 0' : '1') . " ORDER BY $order DESC LIMIT 50");
     while ($r = $db->fetch_array($rows)) {
-        $ranking[] = ['uid' => (int)$r['uid'], 'balance' => floatval($r['balance'])];
+        $ranking[] = ['uid' => (int)$r['uid'], 'balance' => floatval($r['balance']), 'exp' => (int)$r['member_exp']];
     }
     if (!empty($ranking)) {
         $uids = array_column($ranking, 'uid');
