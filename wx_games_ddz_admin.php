@@ -157,7 +157,7 @@ if (Input::getStrVar('ddz_action') === 'get_logs_page' || (isset($_POST['ddz_act
     $db = Database::getInstance();
     $total = (int)$db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `$table_logs` l $log_where")['cnt'];
     $totalPages = max(1, ceil($total / $logPageSize));
-    $rows = $db->query("SELECT l.*, IFNULL(u.nickname, '未知') AS nickname FROM `$table_logs` l LEFT JOIN `" . DB_PREFIX . "user` u ON l.uid = u.uid $log_where ORDER BY l.created_at DESC LIMIT $log_offset, $logPageSize");
+    $rows = $db->query("SELECT l.*, IFNULL(u.nickname, s.nickname) AS nickname FROM `$table_logs` l LEFT JOIN `" . DB_PREFIX . "user` u ON l.uid = u.uid LEFT JOIN `" . DB_PREFIX . "wx_games_scores` s ON l.uid = s.uid AND s.`game` = 'ddz' $log_where ORDER BY l.created_at DESC LIMIT $log_offset, $logPageSize");
     $data = [];
     while ($r = $db->fetch_array($rows)) {
         $data[] = $r;
@@ -471,7 +471,7 @@ try {
     $logCountRow = $db->once_fetch_array("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_games_logs` l $init_log_where");
     $total_log_count = (int)($logCountRow ? $logCountRow['total'] : 0);
     $logTotalPages = max(1, ceil($total_log_count / $logPageSize));
-    $logs_result = $db->query("SELECT l.*, IFNULL(u.nickname, '') AS user_nick FROM `" . DB_PREFIX . "wx_games_logs` l LEFT JOIN `" . DB_PREFIX . "user` u ON l.uid = u.uid $init_log_where ORDER BY l.created_at DESC LIMIT $logOffset, $logPageSize");
+    $logs_result = $db->query("SELECT l.*, IFNULL(u.nickname, s.nickname) AS user_nick FROM `" . DB_PREFIX . "wx_games_logs` l LEFT JOIN `" . DB_PREFIX . "user` u ON l.uid = u.uid LEFT JOIN `" . DB_PREFIX . "wx_games_scores` s ON l.uid = s.uid AND s.`game` = 'ddz' $init_log_where ORDER BY l.created_at DESC LIMIT $logOffset, $logPageSize");
     while ($row = $db->fetch_array($logs_result)) {
         $logs[] = [
             'id' => (int)$row['id'], 'uid' => (int)$row['uid'], 'nickname' => $row['nickname'] ?: $row['user_nick'],
