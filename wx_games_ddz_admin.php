@@ -468,7 +468,7 @@ $logTotalPages = 1;
 $logs = [];
 $init_log_where = "WHERE l.`game` = 'ddz' AND l.`uid` NOT IN (SELECT `uid` FROM `" . DB_PREFIX . "wx_games_scores` WHERE `game` = 'ddz' AND `is_ai` = 1)";
 try {
-    $logCountRow = $db->once_fetch_array("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_games_logs` $init_log_where");
+    $logCountRow = $db->once_fetch_array("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_games_logs` l $init_log_where");
     $total_log_count = (int)($logCountRow ? $logCountRow['total'] : 0);
     $logTotalPages = max(1, ceil($total_log_count / $logPageSize));
     $logs_result = $db->query("SELECT l.*, IFNULL(u.nickname, '') AS user_nick FROM `" . DB_PREFIX . "wx_games_logs` l LEFT JOIN `" . DB_PREFIX . "user` u ON l.uid = u.uid $init_log_where ORDER BY l.created_at DESC LIMIT $logOffset, $logPageSize");
