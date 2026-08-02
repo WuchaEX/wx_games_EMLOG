@@ -657,10 +657,11 @@ function loadAllLogs(page) {
             if (d.data.length === 0) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">暂无流水记录</td></tr>'; return; }
             if (d.log_type === 'plinko') {
                 tbody.innerHTML = d.data.map(l => {
-                    const dt = l.created_at ? new Date((l.created_at || 0)*1000).toLocaleString('zh-CN', {hour12:false}) : '-';
+                    const dt = l.created_at && l.created_at > 0 ? new Date((l.created_at || 0)*1000).toLocaleString('zh-CN', {hour12:false}) : '-';
+                    const nick = l.nickname && l.nickname.indexOf('UID:') !== -1 ? l.nickname : (l.nickname ? l.nickname + ' (UID:' + l.uid + ')' : 'UID:' + l.uid);
                     return `<tr>
                         <td><small>${dt}</small></td>
-                        <td>${l.nickname || ''} (UID:${l.uid})</td>
+                        <td>${nick} (UID:${l.uid})</td>
                         <td>${l.risk}/${l.rows}行</td>
                         <td>${l.bin}槽</td>
                         <td style="font-weight:bold;color:#e17055">${l.multiplier.toFixed(1)}x</td>
@@ -670,10 +671,13 @@ function loadAllLogs(page) {
                 }).join('');
             } else {
                 tbody.innerHTML = d.data.map(l => {
-                    const dt = l.created_at ? new Date((l.created_at || 0)*1000).toLocaleString('zh-CN', {hour12:false}) : '-';
+                    const dt = l.created_at && l.created_at > 0 ? new Date((l.created_at || 0)*1000).toLocaleString('zh-CN', {hour12:false}) : '-';
+                    const nickRaw = l.nickname || '';
+                    const nickHasUid = nickRaw.indexOf('UID:') !== -1;
+                    const nick = nickHasUid ? nickRaw : (nickRaw ? `${nickRaw} (UID:${l.uid})` : `UID:${l.uid}`);
                     return `<tr>
                         <td><small>${dt}</small></td>
-                        <td>${l.nickname || ''} (UID:${l.uid})</td>
+                        <td>${nick}</td>
                         <td style="color:${l.score_change>=0?'#2ecc71':'#e74c3c'};font-weight:bold">${l.score_change>=0?'+':''}${l.score_change}</td>
                         <td>${l.score_before}</td>
                         <td>${l.score_after}</td>
