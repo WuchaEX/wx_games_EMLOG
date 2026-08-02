@@ -575,20 +575,12 @@ function wx_mojang_admin_render() {
 </div>
 
 <?php echo wx_admin_score_tab_html('mj'); ?>
-</div><!-- /tab-content -->
 
-<!-- 修改积分弹窗（动态单例） -->
-<div class="modal fade" id="scoreModal" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content" style="border-radius:14px;border:none;box-shadow:0 10px 40px rgba(0,0,0,0.15);">
-            <div class="modal-header" style="background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border-radius:14px 14px 0 0;border:none;">
-                <h5 class="modal-title" style="font-size:16px;" id="scoreModalTitle">修改积分</h5>
-                <button type="button" class="close" data-dismiss="modal" style="color:#fff;opacity:0.8;">&times;</button>
-            </div>
-            <form method="post" action="./plugin.php?plugin=wx_games&game=mj">
-                <input type="hidden" name="mj_action" value="change_score">
-                <input type="hidden" name="target_uid" id="scoreModalUid">
-                <div class="modal-body" style="padding:24px;">
+<div class="tab-pane fade" id="mj-shop" role="tabpanel">
+    <!-- ========== 商城管理 ========== -->
+    <!-- 商品列表 -->
+    <div class="wx-card card-dark">
+        <div class="card-header">商品列表</div>
                     <div class="form-group">
                         <label>当前积分</label>
                         <input type="text" class="form-control" id="scoreModalCurrent" readonly style="background:#f8f9fe;">
@@ -1661,6 +1653,8 @@ function showUserLog(uid, nickname) {
         document.getElementById('bp_add_btn').disabled = !this.value;
     });
     </script>
-<!-- 关闭：container-fluid / function -->
+<!-- 关闭：mj-shop tab-pane / tab-content / container-fluid / function -->
+</div>
+</div>
 </div>
 <?php }

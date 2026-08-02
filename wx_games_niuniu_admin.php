@@ -975,3 +975,7 @@ document.querySelectorAll('.quote-close-all').forEach(function(link) {
 </script>
 <?php
 }
+?>
+</div>
+</div>
+</div>
