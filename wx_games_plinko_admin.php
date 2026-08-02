@@ -2,8 +2,7 @@
 defined('EMLOG_ROOT') || exit('access denied!');
 
 require_once __DIR__ . '/wx_games_plinko_fn.php';
-// TODO: 暂屏蔽 helper，排查白屏问题
-// require_once __DIR__ . '/wx_games_admin_helper.php';
+require_once __DIR__ . '/wx_games_admin_helper.php';
 
 $db = Database::getInstance();
 $storage = Storage::getInstance('wx_plinko'); // config 仍走 emlog_storage，与 ddz/mj/niuniu 一致
@@ -291,7 +290,8 @@ function wx_plinko_admin_render() {
     <ul class="nav nav-tabs mb-4" id="settingTabs" role="tablist">
         <li class="nav-item"><a class="nav-link active" id="basic-tab" data-toggle="tab" href="#basic" role="tab">基本设置</a></li>
         <li class="nav-item"><a class="nav-link" id="ai-tab" data-toggle="tab" href="#ai" role="tab">AI管理</a></li>
-        <li class="nav-item"><a class="nav-link" id="admin-tab" data-toggle="tab" href="#admin" role="tab">积分管理</a></li>
+        <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#score-mgmt">积分管理</a></li>
+        <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#profit-analysis">收益分析</a></li>
     </ul>
 
     <div class="tab-content" id="settingTabsContent">
@@ -469,6 +469,25 @@ $colors = ['#e74c3c','#d63031','#e17055','#2ecc71','#e67e22','#fdcb6e'];
             </form>
         </div>
 
+        <!-- 积分管理 Tab -->
+        <div class="tab-pane fade" id="score-mgmt">
+        <?php echo wx_admin_score_tab_html('plinko', true); ?>
+        </div>
+
+        <!-- 收益分析 Tab -->
+        <div class="tab-pane fade" id="profit-analysis">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>📊 收益分析 — 风险×行数组合性价比</span>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadAnalysis()">刷新分析</button>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">统计所有用户逐球记录，对比理论期望收益 (EV) 与实际平均收益，找出最优风险×行数组合。</p>
+                <div id="analysisContent" class="table-responsive"><p class="text-center text-muted py-4">点击「刷新分析」开始计算</p></div>
+            </div>
+        </div>
+        </div>
+
         </div> <!-- end tab-content -->
     </div> <!-- end container-fluid -->
 
@@ -530,6 +549,33 @@ function deletePlinkoUser(uid) {
     }
   }
 })();
+
+function loadAnalysis() {
+    document.getElementById('analysisContent').innerHTML = '<p class="text-center text-muted py-4">正在分析...</p>';
+    fetch('?plugin=wx_games&game=plinko&plinko_action=get_analysis')
+        .then(r => r.json()).then(d => {
+            if (d.code !== 0 || !d.data) {
+                document.getElementById('analysisContent').innerHTML = '<p class="text-danger">分析失败</p>';
+                return;
+            }
+            renderAnalysis(d.data);
+        });
+}
+function renderAnalysis(data) {
+    const rows = data.combos || [];
+    if (!rows.length) {
+        document.getElementById('analysisContent').innerHTML = '<p class="text-muted">暂无游戏记录</p>';
+        return;
+    }
+    let html = '<table class="table table-sm table-striped"><thead><tr><th>风险</th><th>行数</th><th>总局</th><th>总投注</th><th>总收益</th><th>ROI%</th><th>理论EV%</th><th>差值%</th></tr></thead><tbody>';
+    rows.forEach(r => {
+        const roi = r.total_bet > 0 ? (r.total_profit / r.total_bet * 100) : 0;
+        const diff = roi - (r.ev || 0);
+        html += '<tr><td>'+r.risk+'</td><td>'+r.rows+'行</td><td>'+r.plays+'</td><td>'+r.total_bet.toFixed(0)+'</td><td style="color:'+(r.total_profit>=0?'#2ecc71':'#e74c3c')+'">'+(r.total_profit>=0?'+':'')+r.total_profit.toFixed(0)+'</td><td>'+(roi>=0?'+':'')+roi.toFixed(2)+'%</td><td>'+(r.ev||0).toFixed(2)+'%</td><td>'+(diff>=0?'+':'')+diff.toFixed(2)+'%</td></tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('analysisContent').innerHTML = html;
+}
 </script>
 <?php
 }
