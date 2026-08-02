@@ -142,10 +142,14 @@ if (Input::postStrVar('ddz_action') === 'delete_user') {
 if (Input::getStrVar('ddz_action') === 'get_logs_page') {
     $log_page = max(1, Input::getIntVar('log_page', 1));
     $log_search = addslashes(trim(Input::getStrVar('search', '')));
+    $exclude_ai = Input::getStrVar('exclude_ai') === '1';
     $logPageSize = 10;
     $log_offset = ($log_page - 1) * $logPageSize;
     $table_logs = DB_PREFIX . 'wx_games_logs';
     $log_where = "WHERE l.`game` = 'ddz'";
+    if ($exclude_ai) {
+        $log_where .= " AND l.`uid` NOT IN (SELECT `uid` FROM `" . DB_PREFIX . "wx_games_scores` WHERE `game` = 'ddz' AND `is_ai` = 1)";
+    }
     if ($log_search) {
         $log_where .= " AND (l.`nickname` LIKE '%$log_search%' OR l.`uid` = '" . intval($log_search) . "')";
     }
@@ -158,7 +162,7 @@ if (Input::getStrVar('ddz_action') === 'get_logs_page') {
         $data[] = $r;
     }
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['code' => 0, 'data' => $data, 'totalPages' => $totalPages, 'currentPage' => $log_page], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['code' => 0, 'data' => $data, 'total' => $total, 'totalPages' => $totalPages, 'currentPage' => $log_page], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -774,7 +778,13 @@ function wx_ddz_admin_render() {
                 <div class="col-lg-6">
                     <!-- 积分变动日志 -->
                     <div class="wx-card card-dark mb-4">
-                        <div class="card-header">积分变动日志（共 <?php echo $total_log_count; ?> 条）</div>
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span>积分变动日志（共 <?php echo $total_log_count; ?> 条）</span>
+                            <label style="font-weight:normal;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                                <input type="checkbox" id="ddzExcludeAiLog" onchange="loadDdzLogs(1)" checked>
+                                排除AI玩家积分
+                            </label>
+                        </div>
                         <div class="card-body" style="padding:0;">
                             <div style="overflow-x:auto;">
                                 <table class="table-admin">
@@ -1583,12 +1593,17 @@ function escapeHtml(str) {
 // ====== 日志分页 AJAX ======
 function loadLogsPage(page) {
     var search = document.getElementById('logSearchInput') ? document.getElementById('logSearchInput').value : '';
+    var excludeAi = document.getElementById('ddzExcludeAiLog');
+    var excludeVal = excludeAi && excludeAi.checked ? '1' : '0';
     var tbody = document.getElementById('logTableBody');
     if (!tbody) { console.log('logTableBody not found'); return; }
     tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载中...</td></tr>';
-    fetch('?plugin=wx_games&game=ddz&ddz_action=get_logs_page&log_page=' + page + '&search=' + encodeURIComponent(search), { credentials: 'include' })
+    fetch('?plugin=wx_games&game=ddz&ddz_action=get_logs_page&log_page=' + page + '&search=' + encodeURIComponent(search) + '&exclude_ai=' + excludeVal, { credentials: 'include' })
     .then(function(r) { return r.json(); })
     .then(function(d) {
+        // 更新标题里的总数
+        var titleSpan = document.querySelector('#logTableBody').parentElement.parentElement.parentElement.querySelector('.card-header span');
+        if (titleSpan && typeof d.total === 'number') titleSpan.textContent = '积分变动日志（共 ' + d.total + ' 条）';
         if (d.code !== 0) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载失败</td></tr>'; return; }
         if (!d.data || d.data.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">暂无日志记录</td></tr>';

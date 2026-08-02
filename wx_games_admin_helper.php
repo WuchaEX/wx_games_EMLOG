@@ -190,10 +190,10 @@ function wx_admin_ajax_logs_page($game) {
                 'created_at' => (int)$r['created_at'],
             ];
         }
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['code' => 0, 'data' => $data, 'totalPages' => $totalPages, 'currentPage' => $log_page, 'log_type' => 'plinko'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['code' => 0, 'data' => $data, 'total' => $total, 'totalPages' => $totalPages, 'currentPage' => $log_page, 'log_type' => 'plinko'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
     $table_logs = DB_PREFIX . 'wx_games_logs';
     $log_where = "WHERE l.`game` = '$game'";
@@ -211,7 +211,7 @@ function wx_admin_ajax_logs_page($game) {
         $data[] = $r;
     }
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['code' => 0, 'data' => $data, 'totalPages' => $totalPages, 'currentPage' => $log_page, 'log_type' => 'score'], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['code' => 0, 'data' => $data, 'total' => $total, 'totalPages' => $totalPages, 'currentPage' => $log_page, 'log_type' => 'score'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -317,7 +317,7 @@ function wx_admin_score_tab_html($game, $is_plinko = false) {
             <!-- 积分变动日志 -->
             <div class="wx-card card-dark mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>积分变动日志</span>
+                    <span id="logCardTitle">积分变动日志</span>
                     <label style="font-weight:normal;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;">
                         <input type="checkbox" id="excludeAiLog" onchange="loadAllLogs(1)" <?= $is_plinko ? '' : 'checked' ?>>
                         排除AI玩家积分
@@ -349,6 +349,10 @@ function wx_admin_score_tab_html($game, $is_plinko = false) {
                             </thead>
                             <tbody id="logTableBody"><tr><td colspan="7" class="wx-empty">加载中...</td></tr></tbody>
                         </table>
+                    </div>
+                    <div style="padding:14px 22px 18px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f0f0f5;">
+                        <small class="text-muted" id="logPageInfo"></small>
+                        <div class="pagination-admin" id="logPager" style="margin-top:0;"></div>
                     </div>
                 </div>
             </div>
@@ -632,7 +636,20 @@ function loadAllLogs(page) {
     const excludeAi = document.getElementById('excludeAiLog');
     postAjax({game: GAME, [ACTION_KEY]: 'get_logs_page', log_page: page, exclude_ai: excludeAi && excludeAi.checked ? '1' : '0'})
         .then(r => r.json()).then(d => {
-            if (d.code !== 0 || !d.data) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载失败</td></tr>'; return; }
+            const title = document.getElementById('logCardTitle');
+            const info = document.getElementById('logPageInfo');
+            const pager = document.getElementById('logPager');
+            if (d.code !== 0 || !d.data) {
+                tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载失败</td></tr>';
+                if (title) title.textContent = '积分变动日志';
+                if (info) info.textContent = '';
+                if (pager) pager.innerHTML = '';
+                return;
+            }
+            const total = typeof d.total === 'number' ? d.total : d.totalPages * 10;
+            if (title) title.textContent = `积分变动日志（共 ${total} 条）`;
+            if (info) info.textContent = `第 ${d.currentPage}/${d.totalPages} 页`;
+            if (pager) pager.innerHTML = renderPager(d.currentPage, d.totalPages, 'loadAllLogs(PAGE)');
             if (d.data.length === 0) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">暂无流水记录</td></tr>'; return; }
             if (d.log_type === 'plinko') {
                 tbody.innerHTML = d.data.map(l => {
