@@ -237,37 +237,29 @@ function wx_admin_ajax_backpack($game) {
 
     // plinko 额外读取已解锁 AI 角色（从 wx_plinko_accounts.members JSON）
     if ($game === 'plinko') {
-        $acc = $db->once_fetch_array("SELECT `members`, `member_exp` FROM `" . DB_PREFIX . "wx_plinko_accounts` WHERE `uid` = $uid LIMIT 1");
-        if ($acc && !empty($acc['members'])) {
-            $members = json_decode($acc['members'], true);
-            if (is_array($members)) {
-                // 默认成员名字表
-                $default_names = ['boram'=>'全宝蓝','qri'=>'李居丽','soyeon'=>'朴素妍','eunjung'=>'恩静','hyomin'=>'孝敏','jiyeon'=>'智妍'];
-                foreach ($members as $mid => $m) {
-                    if (!is_array($m) || empty($m['unlocked'])) continue;
-                    $name = $default_names[$mid] ?? $mid;
-                    $items[] = [
-                        'name' => "👤 $name ($mid)",
-                        'item_type' => 'plinko_member',
-                        'icon' => '',
-                        'created_at' => 0,
-                        'extra' => 'Lv' . intval($m['level'] ?? 1),
-                        'quantity' => 1,
-                    ];
-                }
-                // 额外显示 EXP
-                $exp = intval($acc['member_exp'] ?? 0);
-                if ($exp > 0) {
-                    $items[] = [
-                        'name' => '⭐ 成员经验值',
-                        'item_type' => 'plinko_exp',
-                        'icon' => '',
-                        'created_at' => 0,
-                        'extra' => 'EXP ' . $exp,
-                        'quantity' => 1,
-                    ];
+        // 查询账号信息（失败时静默返回，不影响道具列表）
+        try {
+            $acc = $db->once_fetch_array("SELECT `members` FROM `" . DB_PREFIX . "wx_plinko_accounts` WHERE `uid` = $uid LIMIT 1");
+            if ($acc && !empty($acc['members'])) {
+                $members = json_decode($acc['members'], true);
+                if (is_array($members)) {
+                    $default_names = ['boram'=>'全宝蓝','qri'=>'李居丽','soyeon'=>'朴素妍','eunjung'=>'恩静','hyomin'=>'孝敏','jiyeon'=>'智妍'];
+                    foreach ($members as $mid => $m) {
+                        if (!is_array($m) || empty($m['unlocked'])) continue;
+                        $name = isset($default_names[$mid]) ? $default_names[$mid] : $mid;
+                        $items[] = [
+                            'name' => "👤 $name ($mid)",
+                            'item_type' => 'plinko_member',
+                            'icon' => '',
+                            'created_at' => 0,
+                            'extra' => 'Lv' . intval(isset($m['level']) ? $m['level'] : 1),
+                            'quantity' => 1,
+                        ];
+                    }
                 }
             }
+        } catch (\Throwable $e) {
+            @file_put_contents(__DIR__ . '/ajax_debug.log', "BP MEMBERS ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
         }
     }
 
