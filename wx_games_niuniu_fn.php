@@ -904,7 +904,7 @@ function wx_niuniu_api_use_item() {
 
     $item_type = $row['item_type'];
     $global_types = ['title_colored', 'title_effect'];
-    $cosmetic_types = ['title_colored', 'title_effect', 'card_back', 'emoticon', 'title_badge'];
+    $cosmetic_types = ['title_colored', 'title_effect', 'emoticon', 'bomb_effect', 'title_badge', 'win_effect'];
     if (in_array($item_type, $cosmetic_types, true)) {
         $db->query("UPDATE `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
             SET i.`is_active` = 0 WHERE i.`uid` = $uid AND s.`item_type` = '" . $db->escape_string($item_type) . "'");

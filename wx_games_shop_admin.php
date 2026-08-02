@@ -9,32 +9,47 @@ $filter = isset($_GET['filter']) ? preg_replace('/[^a-z0-9_]/', '', $_GET['filte
 
 // ========== 道具类型映射 ==========
 $ALL_ITEM_TYPES = [
-    'title_colored'    => '昵称变色',
-    'title_effect'     => '昵称特效',
-    'title_badge'      => '称号徽章',
-    'card_back'        => '牌背皮肤',
-    'emoticon'         => '专属表情',
-    'bomb_effect'      => '炸弹特效',
-    'score_buff'       => '积分加成',
-    'win_effect'       => '获胜效果',
+    // 通用类 (is_global=1)
+    'title_colored' => '昵称变色',
+    'title_effect'  => '昵称特效',
+    'title_badge'   => '称号徽章',
+    'emoticon'      => '专属表情',
+    'win_effect'    => '获胜效果',
+    // 斗地主专属
+    'bomb_effect'   => '炸弹特效',
+    'score_buff'    => '积分加成',
+    // 弹珠台专属
     'plinko_coin_pack' => '弹珠数量',
-    'plinko_skin'      => '弹珠皮肤',
-    'plinko_theme'     => '钉阵主题',
-    'member_unlock'    => '成员解锁',
+    'plinko_skin'   => '弹珠皮肤',
+    'member_unlock' => '成员解锁',
 ];
-// 默认 = 全部类型（手工挑选后再提交）
-$ITEM_TYPES = $ALL_ITEM_TYPES;
+// 通用道具（is_global=1 可创建的）
+$GLOBAL_TYPES = ['title_colored', 'title_effect', 'title_badge', 'emoticon', 'win_effect'];
+// 各游戏专属道具
+$GAME_TYPES = [
+    'ddz'    => ['bomb_effect', 'score_buff'],
+    'mj'     => ['score_buff'],
+    'niuniu' => ['bomb_effect', 'score_buff'],
+    'plinko' => ['plinko_coin_pack', 'plinko_skin', 'member_unlock', 'score_buff'],
+];
+// 按 $filter 显示
+if ($filter === 'global') {
+    $ITEM_TYPES = array_intersect_key($ALL_ITEM_TYPES, array_flip($GLOBAL_TYPES));
+} elseif (isset($GAME_TYPES[$filter])) {
+    $ITEM_TYPES = array_intersect_key($ALL_ITEM_TYPES, array_flip(array_merge($GLOBAL_TYPES, $GAME_TYPES[$filter])));
+} else {
+    $ITEM_TYPES = $ALL_ITEM_TYPES;
+}
 $ITEM_TYPE_ICONS = [
     'title_colored' => ['🎨', '{"color":"#ff4500"}'],
     'title_effect'  => ['✨', '{"effect":"glow","color":"gold"}'],
     'title_badge'   => ['👑', '{"badge":"称号"}'],
-    'card_back'     => ['🃏', '{"skin":"diamond"}'],
     'emoticon'      => ['😎', '{"code":"victory"}'],
+    'win_effect'    => ['🎉', '{"effect":"confetti","color":"gold"}'],
     'bomb_effect'   => ['💥', '{"effect":"fire"}'],
     'score_buff'    => ['⚡', '{"multiplier":1.5,"games":5}'],
     'plinko_coin_pack' => ['💰', '{"coins":1000}'],
     'plinko_skin'   => ['🎱', '{"skin_name":"金球"}'],
-    'plinko_theme'  => ['🌈', '{"theme_name":"暗金"}'],
     'member_unlock' => ['🔓', '{"member":"boram"}'],
 ];
 $GAME_NAMES = ['ddz' => '斗地主', 'mj' => '麻将', 'niuniu' => '斗牛', 'plinko' => '弹珠台'];
@@ -150,8 +165,19 @@ $total_count = count($display_items);
                 <div class="row">
                     <div class="col-md-3"><div class="form-group"><label>名称</label><input class="form-control" name="name" required></div></div>
                     <div class="col-md-3"><div class="form-group"><label>类型</label><select class="form-control" name="item_type" onchange="updateHint(this.value,'add')"><?php foreach ($ITEM_TYPES as $tk => $tl): ?><option value="<?= $tk ?>"><?= $tl ?></option><?php endforeach; ?></select></div></div>
-                    <div class="col-md-3"><div class="form-group"><label>归属</label><select class="form-control" name="game"><?php foreach ($GAME_NAMES as $gk => $gn): ?><option value="<?= $gk ?>" <?= $filter === $gk ? 'selected' : '' ?>><?= $gn ?></option><?php endforeach; ?></select></div></div>
-                    <div class="col-md-3"><div class="form-group"><label>通用</label><select class="form-control" name="is_global"><option value="0">否</option><option value="1" <?= $filter === 'global' ? 'selected' : '' ?>>是</option></select></div></div>
+                    <?php if (isset($GAME_TYPES[$filter])): ?>
+                        <input type="hidden" name="game" value="<?= $filter ?>">
+                        <input type="hidden" name="is_global" value="0">
+                        <div class="col-md-3"><div class="form-group"><label>归属</label><input class="form-control" value="<?= $GAME_NAMES[$filter] ?> 专属" readonly disabled></div></div>
+                        <div class="col-md-3"><div class="form-group"><label>通用</label><input class="form-control" value="否" readonly disabled></div></div>
+                    <?php elseif ($filter === 'global'): ?>
+                        <input type="hidden" name="game" value="">
+                        <div class="col-md-3"><div class="form-group"><label>归属</label><input class="form-control" value="🌐 通用" readonly disabled></div></div>
+                        <div class="col-md-3"><div class="form-group"><label>通用</label><select class="form-control" name="is_global"><option value="1" selected>是</option></select></div></div>
+                    <?php else: ?>
+                        <div class="col-md-3"><div class="form-group"><label>归属</label><select class="form-control" name="game"><?php foreach ($GAME_NAMES as $gk => $gn): ?><option value="<?= $gk ?>"><?= $gn ?></option><?php endforeach; ?></select></div></div>
+                        <div class="col-md-3"><div class="form-group"><label>通用</label><select class="form-control" name="is_global"><option value="0">否</option><option value="1">是</option></select></div></div>
+                    <?php endif; ?>
                 </div>
                 <div class="row">
                     <div class="col-md-6"><div class="form-group"><label>效果数据 <span id="addHint" style="color:#999;font-weight:400;">{}</span></label><input class="form-control" name="effect_data" value='{}'></div></div>

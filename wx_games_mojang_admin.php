@@ -16,8 +16,10 @@ $db = Database::getInstance();
 $item_types = [
     'title_colored' => '昵称变色',
     'title_effect'  => '昵称特效',
-    'score_buff'    => '积分加成卡',
     'title_badge'   => '称号徽章',
+    'emoticon'      => '专属表情',
+    'win_effect'    => '获胜效果',
+    'score_buff'    => '积分加成卡',
 ];
 
 $item_type_icons = [

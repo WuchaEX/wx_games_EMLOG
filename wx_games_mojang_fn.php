@@ -733,7 +733,7 @@ function wx_mojang_api_use_item($uid) {
     if (!$row) { wx_mojang_error('道具不存在或已用完'); }
     $item_type = $row['item_type'];
     $global_types = ['title_colored', 'title_effect'];
-    $cosmetic_types = ['title_colored', 'title_effect', 'card_back', 'emoticon', 'win_effect', 'title_badge'];
+    $cosmetic_types = ['title_colored', 'title_effect', 'emoticon', 'win_effect', 'title_badge'];
     if (in_array($item_type, $cosmetic_types, true)) {
         $db->query("UPDATE `" . $table_inv . "` i JOIN `" . $table_items . "` s ON i.`item_id` = s.`id`
             SET i.`is_active` = 0 WHERE i.`uid` = $uid AND s.`item_type` = '" . $db->escape_string($item_type) . "'");
