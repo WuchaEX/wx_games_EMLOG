@@ -213,27 +213,23 @@ function wx_admin_ajax_logs_page($game) {
  */
 function wx_admin_ajax_backpack($game) {
     $uid = isset($_POST['uid']) ? intval($_POST['uid']) : 0;
-    @file_put_contents(__DIR__ . '/ajax_debug.log', "BP: game=$game uid=$uid\n", FILE_APPEND);
     if ($uid <= 0) {
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['code' => 1, 'message' => 'UID无效'], JSON_UNESCAPED_UNICODE);
         exit;
     }
     $db = Database::getInstance();
-    // 通用道具 (is_global=1) + 游戏专属道具
     $table_items = DB_PREFIX . 'wx_games_user_items';
     $items = [];
     $rows = $db->query("SELECT i.*, s.name, s.item_type, s.icon
         FROM `$table_items` i
         LEFT JOIN `" . DB_PREFIX . "wx_games_shop_items` s ON i.item_id = s.id
-        WHERE i.uid = $uid AND (s.`game` = '$game' OR s.`is_global` = 1 OR s.`game` = 'plinko')
+        WHERE i.uid = $uid AND (s.`game` = '$game' OR s.`is_global` = 1)
         ORDER BY i.created_at DESC LIMIT 50");
     if ($rows) {
         while ($r = $db->fetch_array($rows)) {
             $items[] = $r;
         }
-    } else {
-        @file_put_contents(__DIR__ . '/ajax_debug.log', "BP QUERY FAILED: " . $db->error() . " game=$game uid=$uid\n", FILE_APPEND);
     }
     while ($r = $db->fetch_array($rows)) {
         $items[] = $r;
@@ -241,19 +237,10 @@ function wx_admin_ajax_backpack($game) {
 
     // plinko 额外读取已解锁 AI 角色（从 wx_plinko_accounts.members JSON）
     if ($game === 'plinko') {
-        $acc = $db->once_fetch_array("SELECT `members`, `member_exp`, `exp` FROM `" . DB_PREFIX . "wx_plinko_accounts` WHERE `uid` = $uid LIMIT 1");
+        $acc = $db->once_fetch_array("SELECT `members`, `member_exp` FROM `" . DB_PREFIX . "wx_plinko_accounts` WHERE `uid` = $uid LIMIT 1");
         if ($acc && !empty($acc['members'])) {
             $members = json_decode($acc['members'], true);
             if (is_array($members)) {
-                // 读取成员配置（含名字 + 头像）
-                $member_cfg = [];
-                $cfg_row = $db->once_fetch_array("SELECT `value` FROM `" . DB_PREFIX . "wx_games_storage` WHERE `key` = 'plinko.member_config' LIMIT 1");
-                // 简化：从 shop_items 找 member_unlock 道具的 effect_data 反推 ID
-                $cfg_items = $db->query("SELECT `effect_data` FROM `" . DB_PREFIX . "wx_games_shop_items` WHERE `item_type` = 'member_unlock' AND (`game` = 'plinko' OR `is_global` = 1)");
-                while ($c = $db->fetch_array($cfg_items)) {
-                    $d = json_decode($c['effect_data'], true);
-                    if (is_array($d) && isset($d['member'])) $member_cfg[$d['member']] = $d;
-                }
                 // 默认成员名字表
                 $default_names = ['boram'=>'全宝蓝','qri'=>'李居丽','soyeon'=>'朴素妍','eunjung'=>'恩静','hyomin'=>'孝敏','jiyeon'=>'智妍'];
                 foreach ($members as $mid => $m) {
@@ -269,13 +256,14 @@ function wx_admin_ajax_backpack($game) {
                     ];
                 }
                 // 额外显示 EXP
-                if ($acc['exp'] > 0 || $acc['member_exp'] > 0) {
+                $exp = intval($acc['member_exp'] ?? 0);
+                if ($exp > 0) {
                     $items[] = [
-                        'name' => '⭐ 经验值',
+                        'name' => '⭐ 成员经验值',
                         'item_type' => 'plinko_exp',
                         'icon' => '',
                         'created_at' => 0,
-                        'extra' => 'EXP ' . intval($acc['exp']) . ' / 成员EXP ' . intval($acc['member_exp']),
+                        'extra' => 'EXP ' . $exp,
                         'quantity' => 1,
                     ];
                 }
@@ -285,7 +273,6 @@ function wx_admin_ajax_backpack($game) {
 
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['code' => 0, 'data' => $items], JSON_UNESCAPED_UNICODE);
-    @file_put_contents(__DIR__ . '/ajax_debug.log', "BP OK: game=$game uid=$uid items=" . count($items) . "\n", FILE_APPEND);
     exit;
 }
 
