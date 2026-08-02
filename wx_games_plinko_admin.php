@@ -106,8 +106,8 @@ if (Input::postStrVar('plinko_action') === 'add_item') {
     $price_game = Input::postIntVar('price_game', 0);
     $sort_order = Input::postIntVar('sort_order', 10);
     $status = Input::postIntVar('status', 1);
-    $is_global = Input::postIntVar('is_global', 0);
     $game = 'plinko';
+    $is_global = 0;
 
     $db->query("INSERT INTO `$table_shop` (`game`,`name`,`description`,`icon`,`item_type`,`effect_data`,`price_emlog`,`price_game`,`sort_order`,`status`,`is_global`,`created_at`)
         VALUES ('$game','$name','$description','$icon','$item_type','$effect_data',$price_emlog,$price_game,$sort_order,$status,$is_global," . time() . ")");
@@ -126,11 +126,10 @@ if (Input::postStrVar('plinko_action') === 'edit_item') {
         $price_game = Input::postIntVar('price_game', 0);
         $sort_order = Input::postIntVar('sort_order', 10);
         $status = Input::postIntVar('status', 1);
-        $is_global = Input::postIntVar('is_global', 0);
         $db->query("UPDATE `$table_shop` SET
             `name`='$name',`description`='$description',`icon`='$icon',`item_type`='$item_type',
             `effect_data`='$effect_data',`price_emlog`=$price_emlog,`price_game`=$price_game,
-            `sort_order`=$sort_order,`status`=$status,`is_global`=$is_global
+            `sort_order`=$sort_order,`status`=$status
             WHERE `id`=$edit_id");
         emMsg('道具已更新', './plugin.php?plugin=wx_games&game=plinko');
     }
