@@ -33,7 +33,6 @@ if ($wxg_game === 'shop') {
 
 // ========== 通用 AJAX（POST 拦截，在 plugin_setting_view 之前） ==========
 require_once __DIR__ . '/wx_games_admin_helper.php';
-@file_put_contents(__DIR__ . '/ajax_debug.log', date('Y-m-d H:i:s') . ' settings: POST=' . json_encode($_POST) . " GET=" . json_encode($_GET) . "\n", FILE_APPEND);
 if (!empty($_POST['plinko_action'])) {
     $act = $_POST['plinko_action'];
     if ($act === 'get_users_page') { wx_admin_ajax_users_page('plinko', true); }

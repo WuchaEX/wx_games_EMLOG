@@ -140,6 +140,7 @@ if (Input::postStrVar('ddz_action') === 'delete_user') {
 
 // ========== 日志分页 AJAX ==========
 if (Input::getStrVar('ddz_action') === 'get_logs_page') {
+    while (ob_get_level() > 0) { ob_end_clean(); }
     $log_page = max(1, Input::getIntVar('log_page', 1));
     $log_search = addslashes(trim(Input::getStrVar('search', '')));
     $exclude_ai = Input::getStrVar('exclude_ai') === '1';
@@ -781,7 +782,7 @@ function wx_ddz_admin_render() {
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <span>积分变动日志（共 <?php echo $total_log_count; ?> 条）</span>
                             <label style="font-weight:normal;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;">
-                                <input type="checkbox" id="ddzExcludeAiLog" onchange="loadDdzLogs(1)" checked>
+                                <input type="checkbox" id="ddzExcludeAiLog" onchange="loadLogsPage(1)" checked>
                                 排除AI玩家积分
                             </label>
                         </div>

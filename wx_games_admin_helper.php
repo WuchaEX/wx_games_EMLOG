@@ -77,6 +77,7 @@ function wx_admin_score_ops($game, $game_table = '', $use_accounts_table = false
  * 通用 AJAX - 用户列表分页
  */
 function wx_admin_ajax_users_page($game, $use_accounts_table = false) {
+    while (ob_get_level() > 0) { ob_end_clean(); }
     $page = isset($_POST['page']) ? max(1, intval($_POST['page'])) : 1;
     $search = isset($_POST['search']) ? addslashes(trim($_POST['search'])) : '';
     $pageSize = 10;
@@ -150,6 +151,7 @@ function wx_admin_ajax_users_page($game, $use_accounts_table = false) {
  * 通用 AJAX - 积分流水分页
  */
 function wx_admin_ajax_logs_page($game) {
+    while (ob_get_level() > 0) { ob_end_clean(); }
     $log_page = isset($_POST['log_page']) ? max(1, intval($_POST['log_page'])) : 1;
     $log_search = isset($_POST['search']) ? addslashes(trim($_POST['search'])) : '';
     $exclude_ai = isset($_POST['exclude_ai']) && $_POST['exclude_ai'] === '1';
@@ -219,6 +221,7 @@ function wx_admin_ajax_logs_page($game) {
  * 通用 AJAX - 背包查看
  */
 function wx_admin_ajax_backpack($game) {
+    while (ob_get_level() > 0) { ob_end_clean(); }
     $uid = isset($_POST['uid']) ? intval($_POST['uid']) : 0;
     if ($uid <= 0) {
         header('Content-Type: application/json; charset=utf-8');
