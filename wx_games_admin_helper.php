@@ -225,7 +225,7 @@ function wx_admin_ajax_backpack($game) {
         FROM `$table_items` i
         LEFT JOIN `" . DB_PREFIX . "wx_games_shop_items` s ON i.item_id = s.id
         WHERE i.uid = $uid AND (s.`game` = '$game' OR s.`is_global` = 1)
-        ORDER BY i.created_at DESC LIMIT 50");
+        ORDER BY i.`purchased_at` DESC LIMIT 50");
     if ($rows) {
         while ($r = $db->fetch_array($rows)) {
             $items[] = $r;
@@ -579,7 +579,7 @@ function showBackpack(uid) {
             if (d.code !== 0 || !d.data) { c.innerHTML = '<p class="text-muted">背包加载失败：' + (d.message || '') + '</p>'; return; }
             if (d.data.length === 0) { c.innerHTML = '<p class="text-muted">该玩家暂无道具</p>'; return; }
             c.innerHTML = '<table class="table table-sm"><thead><tr><th>道具</th><th>类型</th><th>详情</th><th>获得时间</th></tr></thead><tbody>'
-                + d.data.map(i => `<tr><td>${i.icon||''} ${i.name||'未知'}</td><td>${i.item_type||''}</td><td>${i.extra || (i.quantity||1)}</td><td><small>${i.created_at && i.created_at>0 ? new Date(i.created_at*1000).toLocaleDateString() : '—'}</small></td></tr>`).join('')
+                + d.data.map(i => `<tr><td>${i.icon||''} ${i.name||'未知'}</td><td>${i.item_type||''}</td><td>${i.extra || (i.quantity||1)}</td><td><small>${i.purchased_at && i.purchased_at>0 ? new Date(i.purchased_at*1000).toLocaleDateString() : '—'}</small></td></tr>`).join('')
                 + '</tbody></table>';
         }).catch(e => {
             console.error('showBackpack error:', e);
