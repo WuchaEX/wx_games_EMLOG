@@ -37,6 +37,7 @@ function plugin_setting_view() {
     global $wx_games_list;
     $game = isset($_GET['game']) ? preg_replace('/[^a-z_]/', '', $_GET['game']) : '';
     $base_url = BLOG_URL . 'admin/plugin.php?plugin=wx_games';
+    echo '<!-- [PLUGIN_VIEW] game=' . htmlspecialchars($game) . ' -->';
 ?>
 <link rel="stylesheet" href="<?= BLOG_URL ?>content/plugins/wx_games/css/admin.css">
 <style>
