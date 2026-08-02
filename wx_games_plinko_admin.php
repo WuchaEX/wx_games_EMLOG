@@ -266,6 +266,7 @@ function wx_plinko_admin_render() {
     global $logPage, $logTotalPages, $total_log_count;
     global $expMode, $expMult, $ballSel, $payoutSel; // EXP 设置变量
     if (!function_exists('wx_admin_score_tab_html')) return '<div class="alert alert-danger">admin_helper.php 加载失败</div>';
+    error_log('[PLINKO_ADMIN_RENDER] start');
 
     // 道具类型默认 icon 和 hint
     $item_type_icons = [
