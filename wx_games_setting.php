@@ -33,6 +33,8 @@ if ($wxg_game === 'shop') {
 
 // ========== 通用 AJAX（顶层拦截，在 plugin_setting_view 之前） ==========
 require_once __DIR__ . '/wx_games_admin_helper.php';
+// 调试（用后删除）：任意 AJAX 请求都写日志
+@file_put_contents(__DIR__ . '/ajax_debug.log', date('Y-m-d H:i:s') . " GET=" . json_encode($_GET) . "\n", FILE_APPEND);
 if (!empty($_GET['plinko_action'])) {
     $act = $_GET['plinko_action'];
     if ($act === 'get_users_page') { wx_admin_ajax_users_page('plinko', true); }

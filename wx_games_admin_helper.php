@@ -77,8 +77,8 @@ function wx_admin_score_ops($game, $game_table = '', $use_accounts_table = false
  * 通用 AJAX - 用户列表分页
  */
 function wx_admin_ajax_users_page($game, $use_accounts_table = false) {
-    $page = max(1, Input::getIntVar('page', 1));
-    $search = addslashes(trim(Input::getStrVar('search', '')));
+    $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+    $search = isset($_GET['search']) ? addslashes(trim($_GET['search'])) : '';
     $pageSize = 10;
     $offset = ($page - 1) * $pageSize;
     $db = Database::getInstance();
@@ -150,8 +150,8 @@ function wx_admin_ajax_users_page($game, $use_accounts_table = false) {
  * 通用 AJAX - 积分流水分页
  */
 function wx_admin_ajax_logs_page($game) {
-    $log_page = max(1, Input::getIntVar('log_page', 1));
-    $log_search = addslashes(trim(Input::getStrVar('search', '')));
+    $log_page = isset($_GET['log_page']) ? max(1, intval($_GET['log_page'])) : 1;
+    $log_search = isset($_GET['search']) ? addslashes(trim($_GET['search'])) : '';
     $logPageSize = 10;
     $log_offset = ($log_page - 1) * $logPageSize;
     $db = Database::getInstance();
@@ -212,7 +212,7 @@ function wx_admin_ajax_logs_page($game) {
  * 通用 AJAX - 背包查看
  */
 function wx_admin_ajax_backpack($game) {
-    $uid = Input::getIntVar('uid', 0);
+    $uid = isset($_GET['uid']) ? intval($_GET['uid']) : 0;
     if ($uid <= 0) {
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['code' => 1, 'message' => 'UID无效'], JSON_UNESCAPED_UNICODE);
