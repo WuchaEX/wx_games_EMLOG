@@ -58,6 +58,8 @@ if (Input::getStrVar('ddz_action') === 'get_backpack') { wx_admin_ajax_backpack(
 // 后台视图
 // ============================================================
 function plugin_setting_view() {
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('Pragma: no-cache');
     global $wx_games_list;
     $game = isset($_GET['game']) ? preg_replace('/[^a-z_]/', '', $_GET['game']) : '';
     $base_url = BLOG_URL . 'admin/plugin.php?plugin=wx_games';
