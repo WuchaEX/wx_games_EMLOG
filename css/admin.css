@@ -143,6 +143,7 @@
 }
 .pagination-admin a:hover { background: #2d3436; color: #fff; }
 .pagination-admin .active { background: #2d3436; color: #fff; }
+.pagination-admin .ellipsis { background: transparent; color: #999; cursor: default; padding: 6px 8px; }
 
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {

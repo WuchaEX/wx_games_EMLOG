@@ -113,7 +113,7 @@ function wx_admin_ajax_users_page($game, $use_accounts_table = false) {
                 'wins' => 0,
                 'losses' => 0,
                 'draws' => 0,
-                'best_score' => (int)$row['exp'],  // plinko 用 exp 替代最高分
+                'best_score' => (int)$row['member_exp'],  // plinko 用 member_exp 作 EXP
             ];
         }
     } else {
@@ -402,6 +402,39 @@ function wx_admin_score_tab_html($game, $is_plinko = false) {
         <div class="modal-body" style="max-height:400px;overflow-y:auto"><div id="backpackContent"></div></div>
     </div></div>
 </div>
+<!-- 修改积分弹窗 -->
+<div class="modal fade" id="changeScoreModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius:14px;border:none;box-shadow:0 10px 40px rgba(0,0,0,0.15);">
+            <div class="modal-header" style="background:linear-gradient(135deg,#2d3436,#636e72);color:#fff;border-radius:14px 14px 0 0;border:none;">
+                <h5 class="modal-title" style="font-size:16px;" id="changeScoreModalTitle">修改积分</h5>
+                <button type="button" class="close" data-dismiss="modal" style="color:#fff;opacity:0.8;">&times;</button>
+            </div>
+            <form method="post" action="./plugin.php?plugin=wx_games&game=<?= $game ?>" id="changeScoreForm">
+                <input type="hidden" name="<?= $action_key ?>" value="change_score">
+                <input type="hidden" name="uid" id="changeScoreUid">
+                <div class="modal-body" style="padding:24px;">
+                    <div class="form-group">
+                        <label>当前积分</label>
+                        <input type="text" class="form-control" id="changeScoreCurrent" readonly style="background:#f8f9fe;">
+                    </div>
+                    <div class="form-group">
+                        <label>积分变化（正数增加，负数减少）</label>
+                        <input type="number" name="score_change" class="form-control" required placeholder="例如：100 或 -50">
+                    </div>
+                    <div class="form-group">
+                        <label>变动原因</label>
+                        <input type="text" name="reason" class="form-control" value="管理员手动调整">
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top:1px solid #f0f0f5;padding:16px 24px;">
+                    <button type="button" class="wx-btn wx-btn-sm wx-btn-danger" data-dismiss="modal" style="opacity:0.7;">取消</button>
+                    <button type="submit" class="wx-btn wx-btn-sm">确认修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 <script>
 // ====== 积分管理 JS ======
 const GAME = '<?= $game ?>';
@@ -445,10 +478,7 @@ function loadUsers(p) {
                     </td>
                 </tr>`;
             }).join('');
-            let phtml = '';
-            for (let i = 1; i <= d.totalPages; i++) {
-                phtml += `<a href="javascript:void(0)" onclick="loadUsers(${i})" class="${i===d.currentPage?'active':''}">${i}</a>`;
-            }
+            let phtml = renderPager(d.currentPage, d.totalPages, 'loadUsers(PAGE)');
             document.getElementById('scorePager').innerHTML = phtml;
         }).catch(err => {
             console.error('loadUsers error:', err);
@@ -507,12 +537,26 @@ function loadLogs(uid, p) {
                 }).join('');
             }
             document.getElementById('logPageInfo').textContent = `第 ${d.currentPage}/${d.totalPages} 页`;
-            let ph = '';
-            for (let i = 1; i <= d.totalPages; i++) {
-                ph += `<button class="btn btn-xs btn-${i===d.currentPage?'primary':'outline-secondary'} mr-1" onclick="loadLogs(${uid},${i})">${i}</button>`;
-            }
+            let ph = renderPager(d.currentPage, d.totalPages, `loadLogs(${uid},PAGE)`);
             document.getElementById('logPager').innerHTML = ph;
         }).catch(e => { document.getElementById('logTbody').innerHTML = '<tr><td colspan="6" class="text-danger text-center">加载出错</td></tr>'; });
+}
+
+// 紧凑分页（最多显示当前页前后 2 页 + 首末页 + 上下页）
+function renderPager(cur, total, onclickTpl) {
+    if (total <= 1) return '';
+    const pages = new Set([1, total, cur, cur-1, cur-2, cur+1, cur+2]);
+    const arr = [...pages].filter(p => p >= 1 && p <= total).sort((a,b)=>a-b);
+    let html = '';
+    if (cur > 1) html += `<a href="javascript:void(0)" onclick="${onclickTpl.replace('PAGE', cur-1)}">‹</a>`;
+    let prev = 0;
+    for (const p of arr) {
+        if (prev && p - prev > 1) html += '<span class="ellipsis">…</span>';
+        html += `<a href="javascript:void(0)" onclick="${onclickTpl.replace('PAGE', p)}" class="${p===cur?'active':''}">${p}</a>`;
+        prev = p;
+    }
+    if (cur < total) html += `<a href="javascript:void(0)" onclick="${onclickTpl.replace('PAGE', cur+1)}">›</a>`;
+    return html;
 }
 
 function deleteUser(uid) {
@@ -526,14 +570,27 @@ function deleteUser(uid) {
 
 function showBackpack(uid) {
     fetch(`./plugin.php?plugin=wx_games&game=${GAME}&${ACTION_KEY}=get_backpack&uid=${uid}`)
-        .then(r => r.json()).then(d => {
+        .then(r => {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text().then(t => {
+                try { return JSON.parse(t); } catch(e) {
+                    console.error('Non-JSON response:', t.substring(0, 200));
+                    throw new Error('Invalid JSON: ' + t.substring(0, 100));
+                }
+            });
+        })
+        .then(d => {
             const c = document.getElementById('backpackContent');
-            if (!d.data || d.data.length === 0) { c.innerHTML = '<p class="text-muted">该玩家暂无道具</p>'; }
-            else c.innerHTML = '<table class="table table-sm"><thead><tr><th>道具</th><th>类型</th><th>详情</th><th>获得时间</th></tr></thead><tbody>'
+            if (d.code !== 0 || !d.data) { c.innerHTML = '<p class="text-muted">背包加载失败：' + (d.message || '') + '</p>'; return; }
+            if (d.data.length === 0) { c.innerHTML = '<p class="text-muted">该玩家暂无道具</p>'; return; }
+            c.innerHTML = '<table class="table table-sm"><thead><tr><th>道具</th><th>类型</th><th>详情</th><th>获得时间</th></tr></thead><tbody>'
                 + d.data.map(i => `<tr><td>${i.icon||''} ${i.name||'未知'}</td><td>${i.item_type||''}</td><td>${i.extra || (i.quantity||1)}</td><td><small>${i.created_at && i.created_at>0 ? new Date(i.created_at*1000).toLocaleDateString() : '—'}</small></td></tr>`).join('')
                 + '</tbody></table>';
+        }).catch(e => {
+            console.error('showBackpack error:', e);
+            document.getElementById('backpackContent').innerHTML = '<p class="text-danger">加载失败：' + e.message + '</p>';
         });
-    jQuery('#backpackModal').modal('show');
+    if (typeof jQuery !== 'undefined') jQuery('#backpackModal').modal('show');
 }
 
 // 初始加载 + 页签切换
@@ -598,22 +655,23 @@ function loadAllLogs(page) {
         }).catch(e => { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载出错</td></tr>'; });
 }
 
-// 修改积分按钮点击事件（仿 ddz 样式）
+// 修改积分按钮点击事件（弹模态框）
 document.addEventListener('click', function(e) {
     var btn = e.target.closest('.btn-change-score');
     if (!btn) return;
     var uid = btn.getAttribute('data-uid');
     var score = btn.getAttribute('data-score');
     var nick = btn.getAttribute('data-nick');
-    var change = prompt(`修改 ${nick}(UID:${uid}) 的积分\n当前: ${score}\n输入变化量（正数增加，负数减少）:`, '0');
-    if (change === null || change === '0') return;
-    var reason = prompt('修改原因:', '管理员手动调整') || '管理员手动调整';
-    var form = document.createElement('form');
-    form.method = 'POST';
-    form.style.display = 'none';
-    form.innerHTML = `<input name="${ACTION_KEY}" value="change_score"><input name="uid" value="${uid}"><input name="score_change" value="${change}"><input name="reason" value="${reason}">`;
-    document.body.appendChild(form);
-    form.submit();
+    document.getElementById('changeScoreUid').value = uid;
+    document.getElementById('changeScoreCurrent').value = score;
+    document.getElementById('changeScoreModalTitle').textContent = '修改积分' + (nick ? ' - ' + nick : '');
+    if (typeof jQuery !== 'undefined') {
+        jQuery('#changeScoreModal').modal('show');
+    } else {
+        var m = document.getElementById('changeScoreModal');
+        m.style.display = 'block';
+        m.classList.add('in');
+    }
 });
 </script>
 <?php
