@@ -16,9 +16,6 @@ $db = Database::getInstance();
 $item_types = [
     'title_colored' => '昵称变色',
     'title_effect'  => '昵称特效',
-    'card_back'     => '牌背皮肤',
-    'emoticon'      => '专属表情',
-    'win_effect'    => '胡牌特效',
     'score_buff'    => '积分加成卡',
     'title_badge'   => '称号徽章',
 ];
@@ -26,9 +23,6 @@ $item_types = [
 $item_type_icons = [
     'title_colored' => ['icon' => '🎨', 'hint' => '昵称显示为彩色，如：{"color":"#ff4500"}'],
     'title_effect'  => ['icon' => '✨', 'hint' => '昵称带光晕特效，如：{"effect":"glow","color":"gold"}'],
-    'card_back'     => ['icon' => '🀄', 'hint' => '更换牌背图案，填写图片URL，如：{"url":"https://..."}'],
-    'emoticon'      => ['icon' => '😎', 'hint' => '游戏中发送专属弹幕，如：{"code":"victory","text":"稳了！"}'],
-    'win_effect'    => ['icon' => '💥', 'hint' => '胡牌时触发特效，如：{"color":"#ff4500","particles":80}'],
     'score_buff'    => ['icon' => '⚡', 'hint' => '下N局积分加成，如：{"multiplier":2,"games":5}'],
     'title_badge'   => ['icon' => '👑', 'hint' => '名称旁显示称号，如：{"badge":"麻将大师"}'],
 ];
