@@ -273,6 +273,7 @@ function wx_plinko_route_ajax($action) {
         case 'get_members':    wx_plinko_api_get_members();    break;
         case 'level_up':       wx_plinko_api_level_up();       break;
         case 'get_analysis': wx_plinko_api_get_analysis(); break;
+        case 'get_score_buff':  wx_plinko_api_get_score_buff();  break;
         default:
             wx_games_error('未知操作');
             return;
@@ -784,9 +785,32 @@ function wx_plinko_api_log_ball() {
         }
     }
 
-    $db = Database::getInstance();
+    // 积分加成卡：收益 > 0 时应用倍率，消耗 1 次
+    if ($profit > 0) {
+        $buff = $db->once_fetch_array("SELECT i.id AS inv_id, i.charges, s.effect_data
+            FROM `" . DB_PREFIX . "wx_games_user_items` i
+            JOIN `" . DB_PREFIX . "wx_games_shop_items` s ON i.item_id = s.id
+            WHERE i.uid = $uid AND i.is_active = 1 AND s.item_type = 'score_buff' LIMIT 1");
+        if ($buff) {
+            $buffData = json_decode($buff['effect_data'], true);
+            if (is_array($buffData) && isset($buffData['multiplier'])) {
+                $buffMult = floatval($buffData['multiplier']);
+                $extra = round($profit * ($buffMult - 1) * 100) / 100;
+                $profit += $extra;
+                $payout += $extra;
+            }
+            $newCharges = max(0, (int)$buff['charges'] - 1);
+            if ($newCharges <= 0) {
+                $db->query("UPDATE `" . DB_PREFIX . "wx_games_user_items` SET `charges` = 0, `is_active` = 0 WHERE `id` = " . (int)$buff['inv_id']);
+            } else {
+                $db->query("UPDATE `" . DB_PREFIX . "wx_games_user_items` SET `charges` = $newCharges WHERE `id` = " . (int)$buff['inv_id']);
+            }
+        }
+    }
+
+    $db2 = Database::getInstance();
     $table = DB_PREFIX . 'wx_plinko_games';
-    $db->query("INSERT INTO `$table` (`uid`, `bet`, `multiplier`, `payout`, `profit`, `risk`, `rows`, `bin`, `created_at`)
+    $db2->query("INSERT INTO `$table` (`uid`, `bet`, `multiplier`, `payout`, `profit`, `risk`, `rows`, `bin`, `created_at`)
         VALUES ($uid, $bet, $multiplier, $payout, $profit, $risk, $rowCount, $binIndex, " . time() . ")");
 
     // 服务端计算余额（DB 为唯一真相源，不信任客户端 localStorage）
@@ -881,6 +905,28 @@ function wx_plinko_api_get_analysis() {
         ];
     }
     wx_games_ok(['combos' => $combos]);
+}
+
+// API: get_score_buff — 获取当前积分加成状态
+function wx_plinko_api_get_score_buff() {
+    $user = wx_games_check_user();
+    $uid = intval($user['uid']);
+    $db = Database::getInstance();
+    $buff = $db->once_fetch_array("SELECT i.charges, s.effect_data
+        FROM `" . DB_PREFIX . "wx_games_user_items` i
+        JOIN `" . DB_PREFIX . "wx_games_shop_items` s ON i.item_id = s.id
+        WHERE i.uid = $uid AND i.is_active = 1 AND s.item_type = 'score_buff' LIMIT 1");
+    if (!$buff || intval($buff['charges']) <= 0) {
+        echo json_encode(['code' => 0, 'active' => false], JSON_UNESCAPED_UNICODE);
+    } else {
+        $data = json_decode($buff['effect_data'], true);
+        echo json_encode([
+            'code' => 0, 'active' => true,
+            'multiplier' => isset($data['multiplier']) ? floatval($data['multiplier']) : 1.0,
+            'charges' => intval($buff['charges']),
+        ], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
 }
 
 function wx_plinko_calc_ev($risk, $rows) {

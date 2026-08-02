@@ -197,11 +197,6 @@ $item_types = [
     'plinko_skin'      => '弹珠皮肤',
     'plinko_theme'     => '钉阵主题',
     'member_unlock'    => '成员解锁',
-    'title_colored'    => '昵称变色',
-    'title_effect'     => '昵称特效',
-    'title_badge'      => '称号徽章',
-    'card_back'        => '牌背皮肤',
-    'emoticon'         => '专属表情',
     'score_buff'       => '积分加成卡',
 ];
 
