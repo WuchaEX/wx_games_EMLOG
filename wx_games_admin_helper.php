@@ -152,6 +152,7 @@ function wx_admin_ajax_users_page($game, $use_accounts_table = false) {
 function wx_admin_ajax_logs_page($game) {
     $log_page = isset($_POST['log_page']) ? max(1, intval($_POST['log_page'])) : 1;
     $log_search = isset($_POST['search']) ? addslashes(trim($_POST['search'])) : '';
+    $exclude_ai = isset($_POST['exclude_ai']) && $_POST['exclude_ai'] === '1';
     $logPageSize = 10;
     $log_offset = ($log_page - 1) * $logPageSize;
     $db = Database::getInstance();
@@ -160,6 +161,9 @@ function wx_admin_ajax_logs_page($game) {
         // plinko 流水：每颗弹珠的记录来自 wx_plinko_games
         $table_logs = DB_PREFIX . 'wx_plinko_games';
         $log_where = "WHERE 1=1";
+        if ($exclude_ai) {
+            // plinko 没有传统 AI 玩家，跳过
+        }
         if ($log_search) {
             $uid_search = intval($log_search);
             if ($uid_search > 0) {
@@ -192,13 +196,16 @@ function wx_admin_ajax_logs_page($game) {
     }
 
     $table_logs = DB_PREFIX . 'wx_games_logs';
-    $log_where = "WHERE `game` = '$game'";
-    if ($log_search) {
-        $log_where .= " AND (`nickname` LIKE '%$log_search%' OR `uid` = '" . intval($log_search) . "')";
+    $log_where = "WHERE l.`game` = '$game'";
+    if ($exclude_ai) {
+        $log_where .= " AND l.`uid` NOT IN (SELECT `uid` FROM `" . DB_PREFIX . "wx_games_scores` WHERE `game` = '$game' AND `is_ai` = 1)";
     }
-    $total = (int)$db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `$table_logs` $log_where")['cnt'];
+    if ($log_search) {
+        $log_where .= " AND (l.`nickname` LIKE '%$log_search%' OR l.`uid` = '" . intval($log_search) . "')";
+    }
+    $total = (int)$db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `$table_logs` l $log_where")['cnt'];
     $totalPages = max(1, ceil($total / $logPageSize));
-    $rows = $db->query("SELECT * FROM `$table_logs` $log_where ORDER BY `created_at` DESC LIMIT $log_offset, $logPageSize");
+    $rows = $db->query("SELECT l.* FROM `$table_logs` l $log_where ORDER BY l.`created_at` DESC LIMIT $log_offset, $logPageSize");
     $data = [];
     while ($r = $db->fetch_array($rows)) {
         $data[] = $r;
@@ -309,7 +316,13 @@ function wx_admin_score_tab_html($game, $is_plinko = false) {
         <div class="col-lg-6">
             <!-- 积分变动日志 -->
             <div class="wx-card card-dark mb-4">
-                <div class="card-header">积分变动日志</div>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>积分变动日志</span>
+                    <label style="font-weight:normal;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="excludeAiLog" onchange="loadAllLogs(1)" <?= $is_plinko ? '' : 'checked' ?>>
+                        排除AI玩家积分
+                    </label>
+                </div>
                 <div class="card-body" style="padding:0;">
                     <div style="overflow-x:auto;">
                         <table class="table-admin">
@@ -500,7 +513,7 @@ function showUserLog(uid, nick) {
 }
 function loadLogs(uid, p) {
     logPage = p || logPage;
-    postAjax({game: GAME, [ACTION_KEY]: 'get_logs_page', log_page: logPage, search: uid})
+    postAjax({game: GAME, [ACTION_KEY]: 'get_logs_page', log_page: logPage, search: uid, exclude_ai: '0'})
         .then(r => r.json()).then(d => {
             const head = document.getElementById('logModalHead');
             const tbody = document.getElementById('logTbody');
@@ -616,7 +629,8 @@ function loadAllLogs(page) {
     const tbody = document.getElementById('logTableBody');
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载中...</td></tr>';
-    postAjax({game: GAME, [ACTION_KEY]: 'get_logs_page', log_page: page})
+    const excludeAi = document.getElementById('excludeAiLog');
+    postAjax({game: GAME, [ACTION_KEY]: 'get_logs_page', log_page: page, exclude_ai: excludeAi && excludeAi.checked ? '1' : '0'})
         .then(r => r.json()).then(d => {
             if (d.code !== 0 || !d.data) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载失败</td></tr>'; return; }
             if (d.data.length === 0) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">暂无流水记录</td></tr>'; return; }
