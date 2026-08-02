@@ -262,32 +262,29 @@ function wx_admin_score_tab_html($game, $is_plinko = false) {
     <div class="wx-card card-dark">
         <div class="card-header d-flex justify-content-between align-items-center">
             <span>用户<?= $scoreLabel ?>列表</span>
-            <div class="input-group" style="width:250px">
-                <input type="text" class="form-control form-control-sm" id="scoreSearch" placeholder="搜索用户ID或昵称" onkeydown="if(event.keyCode===13)loadUsers(1)">
-                <div class="input-group-append"><button class="btn btn-sm btn-outline-secondary" onclick="loadUsers(1)">搜索</button></div>
+            <div class="input-group" style="width:280px">
+                <input type="text" class="form-control form-control-sm" id="scoreSearch" placeholder="搜索用户PID或昵称" onkeydown="if(event.keyCode===13)loadUsers(1)">
+                <div class="input-group-append"><button class="wx-btn wx-btn-sm" onclick="loadUsers(1)">搜索</button></div>
             </div>
         </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-            <table class="table table-striped table-hover mb-0">
-                <thead>
-                    <tr>
-                        <th style="width:60px">UID</th>
-                        <th>昵称</th>
-                        <th style="width:100px"><?= $scoreLabel ?></th>
-                        <?php if (!$is_plinko): ?><th style="width:60px">胜</th><th style="width:60px">总</th><?php endif; ?>
-                        <th style="width:200px">操作</th>
-                    </tr>
-                </thead>
-                <tbody id="scoreTbody"><tr><td colspan="10" class="text-center text-muted">加载中...</td></tr></tbody>
-            </table>
+        <div class="card-body" style="padding:0;">
+            <div style="overflow-x:auto;">
+                <table class="table-admin">
+                    <thead>
+                        <tr>
+                            <th>排名</th>
+                            <th>UID</th>
+                            <th>昵称</th>
+                            <th>当前<?= $scoreLabel ?></th>
+                            <?php if (!$is_plinko): ?><th>场次</th><th>胜/负/平</th><?php endif; ?>
+                            <th>最高分</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scoreTbody"><tr><td colspan="8" class="wx-empty">加载中...</td></tr></tbody>
+                </table>
             </div>
-        </div>
-        <div class="card-footer">
-            <div class="d-flex justify-content-between align-items-center">
-                <small class="text-muted" id="scorePageInfo"></small>
-                <div class="btn-group btn-group-sm" id="scorePager"></div>
-            </div>
+            <div class="pagination-admin" id="scorePager" style="margin-top:0;"></div>
         </div>
     </div>
 </div>
@@ -325,39 +322,43 @@ function loadUsers(p) {
     } catch(e) { scoreSearch = ''; }
     fetch(`?plugin=wx_games&game=${GAME}&${ACTION_KEY}=get_users_page&page=${scorePage}&search=${encodeURIComponent(scoreSearch)}`)
         .then(r => r.json()).then(d => {
-            if (d.code !== 0) { document.getElementById('scoreTbody').innerHTML = '<tr><td colspan="10" class="text-center text-danger">加载失败</td></tr>'; return; }
+            if (d.code !== 0) { document.getElementById('scoreTbody').innerHTML = '<tr><td colspan="8" class="wx-empty">加载失败</td></tr>'; return; }
             if (!d.data || d.data.length === 0) {
-                document.getElementById('scoreTbody').innerHTML = '<tr><td colspan="10" class="text-center text-muted">暂无数据</td></tr>';
-                document.getElementById('scorePageInfo').textContent = '';
+                document.getElementById('scoreTbody').innerHTML = '<tr><td colspan="8" class="wx-empty">暂无数据</td></tr>';
                 document.getElementById('scorePager').innerHTML = '';
                 return;
             }
-            document.getElementById('scoreTbody').innerHTML = d.data.map(u => {
-                const isPlinko = <?= $is_plinko ? 'true' : 'false' ?>;
+            const tbody = document.getElementById('scoreTbody');
+            const isPlinko = <?= $is_plinko ? 'true' : 'false' ?>;
+            tbody.innerHTML = d.data.map((u, idx) => {
+                const rank = (d.currentPage - 1) * 10 + idx + 1;
                 const score = Number(u.score||0);
-                const extraCols = isPlinko ? '' : `<td>${u.wins||0}</td><td>${u.total_games||0}</td>`;
+                const nick = (u.nickname||'').replace(/'/g, "\\'");
+                const avatar = u.avatar ? `<img src="${u.avatar}" style="width:24px;height:24px;border-radius:50%;vertical-align:middle;margin-right:4px;">` : '';
+                const extraCols = isPlinko ? '' : `<td>${u.total_games||0}</td><td><span class="win-text">${u.wins||0}胜</span> / <span class="lose-text">${u.losses||0}负</span> / <span style="color:#999;">${u.draws||0}平</span></td>`;
                 return `<tr>
+                    <td>${rank}</td>
                     <td>${u.uid}</td>
-                    <td>${u.nickname || '未知'}</td>
-                    <td><strong>${isPlinko ? score.toFixed(1) : score}</strong></td>
+                    <td>${avatar}${nick || '未知'}</td>
+                    <td><span class="badge-score">${isPlinko ? score.toFixed(1) : score}</span></td>
                     ${extraCols}
+                    <td>${u.best_score||0}</td>
                     <td>
-                        <button class="btn btn-xs btn-outline-primary mr-1" onclick="showModifyScore(${u.uid},${score},'${(u.nickname||'').replace(/'/g,"\\'")}')">修改</button>
-                        <button class="btn btn-xs btn-outline-info mr-1" onclick="showLogs(${u.uid},'${(u.nickname||'').replace(/'/g,"\\'")}')">流水</button>
-                        <button class="btn btn-xs btn-outline-warning mr-1" onclick="deleteUser(${u.uid})">删除</button>
-                        <button class="btn btn-xs btn-outline-success" onclick="showBackpack(${u.uid})">背包</button>
+                        <button type="button" class="wx-btn wx-btn-sm btn-change-score" data-uid="${u.uid}" data-score="${score}" data-nick="${nick}">修改积分</button>
+                        <button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#4facfe,#00f2fe);margin-left:4px;" onclick="showUserLog(${u.uid},'${nick}')">流水</button>
+                        <button type="button" class="wx-btn wx-btn-sm wx-btn-danger" style="margin-left:4px;" onclick="deleteUser(${u.uid})">删除</button>
+                        <button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb);margin-left:4px;" onclick="showBackpack(${u.uid})">背包</button>
                     </td>
                 </tr>`;
             }).join('');
-            document.getElementById('scorePageInfo').textContent = `第 ${d.currentPage}/${d.totalPages} 页 共 ${d.data.length} 条`;
             let phtml = '';
             for (let i = 1; i <= d.totalPages; i++) {
-                phtml += `<button class="btn btn-xs btn-${i===d.currentPage?'primary':'outline-secondary'} mr-1" onclick="loadUsers(${i})">${i}</button>`;
+                phtml += `<a href="javascript:void(0)" onclick="loadUsers(${i})" class="${i===d.currentPage?'active':''}">${i}</a>`;
             }
             document.getElementById('scorePager').innerHTML = phtml;
         }).catch(err => {
             console.error('loadUsers error:', err);
-            document.getElementById('scoreTbody').innerHTML = '<tr><td colspan="10" class="text-center text-danger">加载出错: ' + err.message + '</td></tr>';
+            document.getElementById('scoreTbody').innerHTML = '<tr><td colspan="8" class="wx-empty">加载出错</td></tr>';
         });
 }
 
