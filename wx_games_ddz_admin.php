@@ -466,7 +466,7 @@ $logOffset = ($logPage - 1) * $logPageSize;
 $total_log_count = 0;
 $logTotalPages = 1;
 $logs = [];
-$init_log_where = "WHERE `game` = 'ddz' AND `uid` NOT IN (SELECT `uid` FROM `" . DB_PREFIX . "wx_games_scores` WHERE `game` = 'ddz' AND `is_ai` = 1)";
+$init_log_where = "WHERE l.`game` = 'ddz' AND l.`uid` NOT IN (SELECT `uid` FROM `" . DB_PREFIX . "wx_games_scores` WHERE `game` = 'ddz' AND `is_ai` = 1)";
 try {
     $logCountRow = $db->once_fetch_array("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_games_logs` $init_log_where");
     $total_log_count = (int)($logCountRow ? $logCountRow['total'] : 0);
