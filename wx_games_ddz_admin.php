@@ -466,14 +466,15 @@ $logOffset = ($logPage - 1) * $logPageSize;
 $total_log_count = 0;
 $logTotalPages = 1;
 $logs = [];
+$init_log_where = "WHERE `game` = 'ddz' AND `uid` NOT IN (SELECT `uid` FROM `" . DB_PREFIX . "wx_games_scores` WHERE `game` = 'ddz' AND `is_ai` = 1)";
 try {
-    $logCountRow = $db->once_fetch_array("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_games_logs` WHERE `game` = 'ddz'");
+    $logCountRow = $db->once_fetch_array("SELECT COUNT(*) as total FROM `" . DB_PREFIX . "wx_games_logs` $init_log_where");
     $total_log_count = (int)($logCountRow ? $logCountRow['total'] : 0);
     $logTotalPages = max(1, ceil($total_log_count / $logPageSize));
-    $logs_result = $db->query("SELECT * FROM `" . DB_PREFIX . "wx_games_logs` WHERE `game` = 'ddz' ORDER BY `created_at` DESC LIMIT $logOffset, $logPageSize");
+    $logs_result = $db->query("SELECT l.*, IFNULL(u.nickname, '') AS user_nick FROM `" . DB_PREFIX . "wx_games_logs` l LEFT JOIN `" . DB_PREFIX . "user` u ON l.uid = u.uid $init_log_where ORDER BY l.created_at DESC LIMIT $logOffset, $logPageSize");
     while ($row = $db->fetch_array($logs_result)) {
         $logs[] = [
-            'id' => (int)$row['id'], 'uid' => (int)$row['uid'], 'nickname' => $row['nickname'],
+            'id' => (int)$row['id'], 'uid' => (int)$row['uid'], 'nickname' => $row['nickname'] ?: $row['user_nick'],
             'score_change' => (int)$row['score_change'], 'score_before' => (int)$row['score_before'],
             'score_after' => (int)$row['score_after'], 'reason' => $row['reason'],
             'operator' => $row['operator'], 'created_at' => (int)$row['created_at'],
@@ -803,8 +804,8 @@ function wx_ddz_admin_render() {
                                     <tbody id="logTableBody">
                                         <?php foreach ($logs as $log): ?>
                                         <tr>
-                                            <td style="white-space:nowrap;"><?php echo date('Y-m-d H:i', $log['created_at']); ?></td>
-                                            <td><?php echo htmlspecialchars($log['nickname']); ?></td>
+                                            <td style="white-space:nowrap;"><?php echo $log['created_at'] > 0 ? date('Y-m-d H:i', $log['created_at']) : '-'; ?></td>
+                                            <td><?php echo htmlspecialchars($log['nickname']); ?> (UID:<?php echo $log['uid']; ?>)</td>
                                             <td>
                                                 <?php if ($log['score_change'] > 0): ?>
                                                 <span class="win-text">+<?php echo $log['score_change']; ?></span>
