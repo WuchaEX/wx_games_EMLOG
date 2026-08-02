@@ -394,8 +394,8 @@ function wx_mojang_admin_change_score($uid, $score_change, $reason = '', $operat
         $operator_esc = $db->escape_string($operator);
         $db->query("UPDATE `" . $table_scores . "` SET `score` = $score_after WHERE `game` = 'mj' AND `id` = " . intval($row['id']));
         $db->query("INSERT INTO `" . $table_logs . "`
-            (`game`, `uid`, `score_change`, `score_before`, `score_after`, `reason`, `operator`)
-            VALUES ('mj', $uid, $score_change, $score_before, $score_after, '$reason_esc', '$operator_esc')");
+            (`game`, `uid`, `nickname`, `score_change`, `score_before`, `score_after`, `reason`, `operator`, `created_at`)
+            VALUES ('mj', $uid, '" . $db->escape_string(trim($row['nickname'] ?? '')) . "', $score_change, $score_before, $score_after, '$reason_esc', '$operator_esc', " . time() . ")");
         return true;
     } catch (Throwable $e) { return false; }
 }

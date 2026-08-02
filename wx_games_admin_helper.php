@@ -207,9 +207,10 @@ function wx_admin_ajax_logs_page($game) {
     }
     $total = (int)$db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `$table_logs` l $log_where")['cnt'];
     $totalPages = max(1, ceil($total / $logPageSize));
-    $rows = $db->query("SELECT l.* FROM `$table_logs` l $log_where ORDER BY l.`created_at` DESC LIMIT $log_offset, $logPageSize");
+    $rows = $db->query("SELECT l.*, IFNULL(u.nickname, '') AS nickname FROM `$table_logs` l LEFT JOIN `" . DB_PREFIX . "user` u ON l.uid = u.uid $log_where ORDER BY l.`created_at` DESC LIMIT $log_offset, $logPageSize");
     $data = [];
     while ($r = $db->fetch_array($rows)) {
+        if (empty($r['nickname'])) $r['nickname'] = '(UID:' . $r['uid'] . ')';
         $data[] = $r;
     }
     header('Content-Type: application/json; charset=utf-8');
