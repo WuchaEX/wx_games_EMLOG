@@ -139,11 +139,11 @@ if (Input::postStrVar('ddz_action') === 'delete_user') {
 }
 
 // ========== 日志分页 AJAX ==========
-if (Input::getStrVar('ddz_action') === 'get_logs_page') {
+if (Input::getStrVar('ddz_action') === 'get_logs_page' || (isset($_POST['ddz_action']) && $_POST['ddz_action'] === 'get_logs_page')) {
     while (ob_get_level() > 0) { ob_end_clean(); }
     $log_page = max(1, Input::getIntVar('log_page', 1));
     $log_search = addslashes(trim(Input::getStrVar('search', '')));
-    $exclude_ai = Input::getStrVar('exclude_ai') === '1';
+    $exclude_ai = (isset($_POST['exclude_ai']) && $_POST['exclude_ai'] === '1') || (isset($_GET['exclude_ai']) && $_GET['exclude_ai'] === '1');
     $logPageSize = 10;
     $log_offset = ($log_page - 1) * $logPageSize;
     $table_logs = DB_PREFIX . 'wx_games_logs';
@@ -825,23 +825,28 @@ function wx_ddz_admin_render() {
                                 </table>
                             </div>
                             <?php if ($logTotalPages > 1): ?>
-                            <div class="pagination-admin" style="margin-top:0;" id="logPagination">
+                            <div style="padding:14px 22px 18px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f0f0f5;">
+                                <small class="text-muted">第 <?= $logPage ?>/<?= $logTotalPages ?> 页</small>
+                                <div class="pagination-admin" style="margin-top:0;" id="logPagination">
                                 <?php
                                 $logStart = max(1, $logPage - 2);
                                 $logEnd = min($logTotalPages, $logPage + 2);
+                                if ($logPage > 1) echo '<a href="javascript:void(0)" onclick="loadLogsPage(' . ($logPage - 1) . ')">‹</a>';
                                 if ($logStart > 1) {
-                                    echo '<a href="javascript:void(0)" onclick="loadLogsPage(1)" class="pagi-link">1</a>';
-                                    if ($logStart > 2) echo '<span style="padding:6px 8px;color:#999;">...</span>';
+                                    echo '<a href="javascript:void(0)" onclick="loadLogsPage(1)">1</a>';
+                                    if ($logStart > 2) echo '<span class="ellipsis">…</span>';
                                 }
                                 for ($i = $logStart; $i <= $logEnd; $i++) {
                                     $active = $i == $logPage ? 'active' : '';
-                                    echo '<a href="javascript:void(0)" onclick="loadLogsPage(' . $i . ')" class="pagi-link ' . $active . '">' . $i . '</a>';
+                                    echo '<a href="javascript:void(0)" onclick="loadLogsPage(' . $i . ')" class="' . $active . '">' . $i . '</a>';
                                 }
                                 if ($logEnd < $logTotalPages) {
-                                    if ($logEnd < $logTotalPages - 1) echo '<span style="padding:6px 8px;color:#999;">...</span>';
-                                    echo '<a href="javascript:void(0)" onclick="loadLogsPage(' . $logTotalPages . ')" class="pagi-link">' . $logTotalPages . '</a>';
+                                    if ($logEnd < $logTotalPages - 1) echo '<span class="ellipsis">…</span>';
+                                    echo '<a href="javascript:void(0)" onclick="loadLogsPage(' . $logTotalPages . ')">' . $logTotalPages . '</a>';
                                 }
+                                if ($logPage < $logTotalPages) echo '<a href="javascript:void(0)" onclick="loadLogsPage(' . ($logPage + 1) . ')">›</a>';
                                 ?>
+                                </div>
                             </div>
                             <?php endif; ?>
                         </div>
@@ -1599,7 +1604,12 @@ function loadLogsPage(page) {
     var tbody = document.getElementById('logTableBody');
     if (!tbody) { console.log('logTableBody not found'); return; }
     tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载中...</td></tr>';
-    fetch('?plugin=wx_games&game=ddz&ddz_action=get_logs_page&log_page=' + page + '&search=' + encodeURIComponent(search) + '&exclude_ai=' + excludeVal, { credentials: 'include' })
+    var fd = new FormData();
+    fd.append('ddz_action', 'get_logs_page');
+    fd.append('log_page', page);
+    fd.append('search', search);
+    fd.append('exclude_ai', excludeVal);
+    fetch('./plugin.php?plugin=wx_games&game=ddz', { method: 'POST', body: fd, credentials: 'include' })
     .then(function(r) { return r.json(); })
     .then(function(d) {
         // 更新标题里的总数
@@ -1631,6 +1641,12 @@ function updateLogPagination(currentPage, totalPages) {
     if (!container) return;
     if (totalPages <= 1) { container.innerHTML = ''; return; }
     container.innerHTML = renderPager(currentPage, totalPages, 'loadLogsPage(PAGE)');
+    // 同步更新页码信息（在 .text-muted 元素内）
+    var wrapper = container.parentElement;
+    if (wrapper) {
+        var info = wrapper.querySelector('small.text-muted');
+        if (info) info.textContent = '第 ' + currentPage + '/' + totalPages + ' 页';
+    }
 }
 function renderPager(cur, total, onclickTpl) {
     if (total <= 1) return '';
