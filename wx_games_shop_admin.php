@@ -5,7 +5,7 @@ require_once __DIR__ . '/wx_games.php';
 $db = Database::getInstance();
 $table_shop = DB_PREFIX . 'wx_games_shop_items';
 $base_url = BLOG_URL . 'admin/plugin.php?plugin=wx_games&game=shop';
-$filter = isset($_GET['filter']) ? preg_replace('/[^a-z0-9_]/', '', $_GET['filter']) : 'global';
+$filter = isset($_GET['filter']) ? preg_replace('/[^a-z0-9_]/', '', $_GET['filter']) : 'global'; // v1.4.0 cache fix
 
 // ========== 道具类型映射 ==========
 $ALL_ITEM_TYPES = [
