@@ -213,6 +213,7 @@ function wx_admin_ajax_logs_page($game) {
  */
 function wx_admin_ajax_backpack($game) {
     $uid = isset($_POST['uid']) ? intval($_POST['uid']) : 0;
+    @file_put_contents(__DIR__ . '/ajax_debug.log', "BP: game=$game uid=$uid\n", FILE_APPEND);
     if ($uid <= 0) {
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['code' => 1, 'message' => 'UID无效'], JSON_UNESCAPED_UNICODE);
@@ -227,6 +228,13 @@ function wx_admin_ajax_backpack($game) {
         LEFT JOIN `" . DB_PREFIX . "wx_games_shop_items` s ON i.item_id = s.id
         WHERE i.uid = $uid AND (s.`game` = '$game' OR s.`is_global` = 1 OR s.`game` = 'plinko')
         ORDER BY i.created_at DESC LIMIT 50");
+    if ($rows) {
+        while ($r = $db->fetch_array($rows)) {
+            $items[] = $r;
+        }
+    } else {
+        @file_put_contents(__DIR__ . '/ajax_debug.log', "BP QUERY FAILED: " . $db->error() . " game=$game uid=$uid\n", FILE_APPEND);
+    }
     while ($r = $db->fetch_array($rows)) {
         $items[] = $r;
     }
@@ -277,6 +285,7 @@ function wx_admin_ajax_backpack($game) {
 
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['code' => 0, 'data' => $items], JSON_UNESCAPED_UNICODE);
+    @file_put_contents(__DIR__ . '/ajax_debug.log', "BP OK: game=$game uid=$uid items=" . count($items) . "\n", FILE_APPEND);
     exit;
 }
 
