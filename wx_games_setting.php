@@ -88,11 +88,22 @@ select.form-control{padding:5px 8px;min-width:0}
             echo '<div class="alert alert-danger">niuniu admin 加载失败</div>';
         }
     } elseif ($game === 'plinko') {
-        error_log('[SETTING] plinko branch, function_exists=' . (function_exists('wx_plinko_admin_render') ? 'YES' : 'NO'));
+        // 确保辅助文件已加载（兼容 emlog 未执行顶层 require_once 的情况）
+        if (!function_exists('wx_admin_score_tab_html')) {
+            require_once __DIR__ . '/wx_games_plinko_fn.php';
+            require_once __DIR__ . '/wx_games_admin_helper.php';
+        }
         if (function_exists('wx_plinko_admin_render')) {
             wx_plinko_admin_render();
         } else {
-            echo '<div class="alert alert-danger">plinko admin 加载失败</div>';
+            // 兜底加载
+            require_once __DIR__ . '/wx_games_plinko_fn.php';
+            require_once __DIR__ . '/wx_games_plinko_admin.php';
+            if (function_exists('wx_plinko_admin_render')) {
+                wx_plinko_admin_render();
+            } else {
+                echo '<div class="alert alert-danger">plinko admin 加载失败（render 函数不存在）</div>';
+            }
         }
     } else {
         wxg_hub_view();
