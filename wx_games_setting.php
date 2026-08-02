@@ -27,10 +27,33 @@ if ($wxg_game === 'shop') {
     require_once __DIR__ . '/wx_games_niuniu_admin.php';
 } elseif ($wxg_game === 'plinko') {
     require_once __DIR__ . '/wx_games_plinko_fn.php';
+    require_once __DIR__ . '/wx_games_admin_helper.php';
     require_once __DIR__ . '/wx_games_plinko_admin.php';
 }
 
-// ============================================================
+// ========== 通用 AJAX（顶层拦截，在 plugin_setting_view 之前） ==========
+require_once __DIR__ . '/wx_games_admin_helper.php';
+if (!empty($_GET['plinko_action'])) {
+    $act = $_GET['plinko_action'];
+    if ($act === 'get_users_page') { wx_admin_ajax_users_page('plinko', true); }
+    elseif ($act === 'get_logs_page') { wx_admin_ajax_logs_page('plinko'); }
+    elseif ($act === 'get_backpack') { wx_admin_ajax_backpack('plinko'); }
+}
+if (!empty($_GET['mj_action'])) {
+    $act = $_GET['mj_action'];
+    if ($act === 'get_users_page') { wx_admin_ajax_users_page('mj'); }
+    elseif ($act === 'get_logs_page') { wx_admin_ajax_logs_page('mj'); }
+    elseif ($act === 'get_backpack') { wx_admin_ajax_backpack('mj'); }
+}
+if (!empty($_GET['niuniu_action'])) {
+    $act = $_GET['niuniu_action'];
+    if ($act === 'get_users_page') { wx_admin_ajax_users_page('niuniu'); }
+    elseif ($act === 'get_logs_page') { wx_admin_ajax_logs_page('niuniu'); }
+    elseif ($act === 'get_backpack') { wx_admin_ajax_backpack('niuniu'); }
+}
+if (Input::getStrVar('ddz_action') === 'get_users_page') { wx_admin_ajax_users_page('ddz'); }
+if (Input::getStrVar('ddz_action') === 'get_logs_page') { wx_admin_ajax_logs_page('ddz'); }
+if (Input::getStrVar('ddz_action') === 'get_backpack') { wx_admin_ajax_backpack('ddz'); }
 // 后台视图
 // ============================================================
 function plugin_setting_view() {
