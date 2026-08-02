@@ -1630,21 +1630,22 @@ function updateLogPagination(currentPage, totalPages) {
     var container = document.getElementById('logPagination');
     if (!container) return;
     if (totalPages <= 1) { container.innerHTML = ''; return; }
-    var html = '';
-    var start = Math.max(1, currentPage - 2);
-    var end = Math.min(totalPages, currentPage + 2);
-    if (start > 1) {
-        html += '<a href="javascript:void(0)" onclick="loadLogsPage(1)" class="pagi-link">1</a>';
-        if (start > 2) html += '<span style="padding:6px 8px;color:#999;">...</span>';
+    container.innerHTML = renderPager(currentPage, totalPages, 'loadLogsPage(PAGE)');
+}
+function renderPager(cur, total, onclickTpl) {
+    if (total <= 1) return '';
+    const pages = new Set([1, total, cur, cur-1, cur-2, cur+1, cur+2]);
+    const arr = [...pages].filter(p => p >= 1 && p <= total).sort((a,b)=>a-b);
+    let html = '';
+    if (cur > 1) html += '<a href="javascript:void(0)" onclick="' + onclickTpl.replace('PAGE', cur-1) + '">‹</a>';
+    let prev = 0;
+    for (const p of arr) {
+        if (prev && p - prev > 1) html += '<span class="ellipsis">…</span>';
+        html += '<a href="javascript:void(0)" onclick="' + onclickTpl.replace('PAGE', p) + '" class="' + (p===cur?'active':'') + '">' + p + '</a>';
+        prev = p;
     }
-    for (var i = start; i <= end; i++) {
-        html += '<a href="javascript:void(0)" onclick="loadLogsPage(' + i + ')" class="pagi-link' + (i == currentPage ? ' active' : '') + '">' + i + '</a>';
-    }
-    if (end < totalPages) {
-        if (end < totalPages - 1) html += '<span style="padding:6px 8px;color:#999;">...</span>';
-        html += '<a href="javascript:void(0)" onclick="loadLogsPage(' + totalPages + ')" class="pagi-link">' + totalPages + '</a>';
-    }
-    container.innerHTML = html;
+    if (cur < total) html += '<a href="javascript:void(0)" onclick="' + onclickTpl.replace('PAGE', cur+1) + '">›</a>';
+    return html;
 }
 
 function loadShopItemsDropdown() {
