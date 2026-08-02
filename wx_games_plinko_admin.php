@@ -2,6 +2,7 @@
 defined('EMLOG_ROOT') || exit('access denied!');
 
 require_once __DIR__ . '/wx_games_plinko_fn.php';
+require_once __DIR__ . '/wx_games_admin_helper.php';
 
 $db = Database::getInstance();
 $storage = Storage::getInstance('wx_plinko'); // config 仍走 emlog_storage，与 ddz/mj/niuniu 一致
@@ -81,12 +82,12 @@ if (Input::postStrVar('plinko_action') === 'change_score') {
 }
 
 if (Input::postStrVar('plinko_action') === 'delete_user') {
-    $del_uid = Input::postIntVar('uid', 0);
-    if ($del_uid > 0) {
-        $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_scores` WHERE `uid` = $del_uid AND `game` = 'plinko' AND `is_ai` = 0");
-        $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_logs` WHERE `uid` = $del_uid AND `game` = 'plinko'");
-        $db->query("DELETE FROM `$table_accounts` WHERE `uid` = $del_uid");
-        $db->query("DELETE FROM `" . DB_PREFIX . "wx_plinko_games` WHERE `uid` = $del_uid");
+    $uid = Input::postIntVar('uid', 0);
+    if ($uid > 0) {
+        $db = Database::getInstance();
+        $db->query("DELETE FROM `" . DB_PREFIX . "wx_plinko_accounts` WHERE `uid` = $uid");
+        $db->query("DELETE FROM `" . DB_PREFIX . "wx_plinko_games` WHERE `uid` = $uid");
+        $db->query("DELETE FROM `" . DB_PREFIX . "wx_games_logs` WHERE `uid` = $uid AND `game` = 'plinko'");
     }
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['code' => 0, 'message' => '已删除'], JSON_UNESCAPED_UNICODE);
@@ -169,6 +170,11 @@ if (Input::postStrVar('plinko_action') === 'save_member_config') {
     $storage->setValue('member_config', $cfg, 'array');
     emMsg('AI配置已保存', './plugin.php?plugin=wx_games&game=plinko');
 }
+
+// ========== 积分管理 AJAX ==========
+if (Input::getStrVar('plinko_action') === 'get_users_page') { wx_admin_ajax_users_page('plinko', true); }
+if (Input::getStrVar('plinko_action') === 'get_logs_page') { wx_admin_ajax_logs_page('plinko'); }
+if (Input::getStrVar('plinko_action') === 'get_backpack') { wx_admin_ajax_backpack('plinko'); }
 
 // ========== 读取设置 ==========
 $config = wx_plinko_get_config();
@@ -259,6 +265,7 @@ function wx_plinko_admin_render() {
     global $users, $logs, $search, $page, $totalPages, $total_users_count;
     global $logPage, $logTotalPages, $total_log_count;
     global $expMode, $expMult, $ballSel, $payoutSel; // EXP 设置变量
+    if (!function_exists('wx_admin_score_tab_html')) return '<div class="alert alert-danger">admin_helper.php 加载失败</div>';
 
     // 道具类型默认 icon 和 hint
     $item_type_icons = [
@@ -282,7 +289,8 @@ function wx_plinko_admin_render() {
     <ul class="nav nav-tabs mb-4" id="settingTabs" role="tablist">
         <li class="nav-item"><a class="nav-link active" id="basic-tab" data-toggle="tab" href="#basic" role="tab">基本设置</a></li>
         <li class="nav-item"><a class="nav-link" id="ai-tab" data-toggle="tab" href="#ai" role="tab">AI管理</a></li>
-        <li class="nav-item"><a class="nav-link" id="admin-tab" data-toggle="tab" href="#admin" role="tab">积分管理</a></li>
+        <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#score-mgmt">积分管理</a></li>
+        <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#profit-analysis">收益分析</a></li>
     </ul>
 
     <div class="tab-content" id="settingTabsContent">
@@ -382,146 +390,6 @@ function wx_plinko_admin_render() {
             </form>
         </div>
 
-        <!-- ========== 积分管理 ========== -->
-        <div class="tab-pane fade" id="admin" role="tabpanel">
-            <div class="row">
-                <div class="col-lg-6">
-                    <div class="wx-card card-dark mb-4">
-                        <div class="card-header">余额查询与修改</div>
-                        <div class="card-body">
-                            <form method="post" class="mb-3" style="max-width:400px">
-                                <input type="hidden" name="plinko_action" value="change_score">
-                                <div class="form-group">
-                                    <label>用户ID</label>
-                                    <input class="form-control" name="uid" type="number" min="1" required>
-                                </div>
-                                <div class="form-group">
-                                    <label>余额变动（正=增加，负=扣除）</label>
-                                    <input class="form-control" name="score_change" type="number" required>
-                                </div>
-                                <div class="form-group">
-                                    <label>原因</label>
-                                    <input class="form-control" name="reason" value="管理员手动调整">
-                                </div>
-                                <button type="submit" class="wx-btn">提交修改</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-lg-6">
-                    <div class="wx-card card-dark mb-4">
-                        <div class="card-header">积分变动日志（共 <?php echo $total_log_count; ?> 条）</div>
-                        <div class="card-body" style="padding:0;">
-                            <div style="overflow-x:auto;">
-                                <table class="table-admin">
-                                    <thead>
-                                        <tr>
-                                            <th>时间</th>
-                                            <th>用户</th>
-                                            <th>变动</th>
-                                            <th>变动前</th>
-                                            <th>变动后</th>
-                                            <th>原因</th>
-                                            <th>操作者</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php foreach ($logs as $log): ?>
-                                        <tr>
-                                            <td style="white-space:nowrap;"><?php echo date('Y-m-d H:i', $log['created_at']); ?></td>
-                                            <td><?php echo htmlspecialchars($log['nickname']); ?></td>
-                                            <td>
-                                                <?php if ($log['score_change'] > 0): ?>
-                                                <span class="win-text">+<?php echo $log['score_change']; ?></span>
-                                                <?php else: ?>
-                                                <span class="lose-text"><?php echo $log['score_change']; ?></span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td><?php echo $log['score_before']; ?></td>
-                                            <td><?php echo $log['score_after']; ?></td>
-                                            <td><?php echo htmlspecialchars($log['reason']); ?></td>
-                                            <td><?php echo htmlspecialchars($log['operator']); ?></td>
-                                        </tr>
-                                        <?php endforeach; ?>
-                                        <?php if (empty($logs)): ?>
-                                        <tr><td colspan="7" class="wx-empty">暂无日志记录</td></tr>
-                                        <?php endif; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <?php if ($logTotalPages > 1): ?>
-                            <div class="pagination-admin" style="margin-top:0;">
-                                <?php
-                                $logStart = max(1, $logPage - 2);
-                                $logEnd = min($logTotalPages, $logPage + 2);
-                                for ($i = 1; $i <= $logTotalPages; $i++) {
-                                    $active = $i == $logPage ? 'active' : '';
-                                    echo '<a href="./plugin.php?plugin=wx_games&game=plinko&tab=admin&log_page=' . $i . '" class="pagi-link ' . $active . '">' . $i . '</a>';
-                                }
-                                ?>
-                            </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 用户积分列表 -->
-            <div class="wx-card card-dark">
-                <div class="card-header">用户积分列表</div>
-                <div class="card-body" style="padding:0;">
-                    <div style="padding:16px 22px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-                        <span>共 <strong><?php echo $total_users_count; ?></strong> 条记录</span>
-                        <form method="get" action="./plugin.php" class="form-inline" style="display:flex;gap:8px;">
-                            <input type="hidden" name="plugin" value="wx_games">
-                            <input type="hidden" name="tab" value="admin">
-                            <input type="hidden" name="game" value="plinko">
-                            <input type="text" name="search" class="form-control" placeholder="搜索用户ID或昵称" value="<?php echo htmlspecialchars($search); ?>" style="width:200px;">
-                            <button type="submit" class="wx-btn wx-btn-sm">搜索</button>
-                        </form>
-                    </div>
-                    <div style="overflow-x:auto;">
-                        <table class="table-admin">
-                            <thead>
-                                <tr>
-                                    <th>排名</th>
-                                    <th>UID</th>
-                                    <th>昵称</th>
-                                    <th>当前弹珠</th>
-                                    <th>更新时间</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($users as $index => $user): ?>
-                                <tr>
-                                    <td><?php echo ($page - 1) * $pageSize + $index + 1; ?></td>
-                                    <td><?php echo $user['uid']; ?></td>
-                                    <td><?php echo htmlspecialchars($user['nickname']); ?></td>
-                                    <td><span class="badge-score">💎 <?php echo $user['balance'] % 1 === 0 ? number_format($user['balance'], 0) : number_format($user['balance'], 1); ?></span></td>
-                                    <td style="white-space:nowrap;"><?php echo $user['updated_at'] ? date('Y-m-d H:i', $user['updated_at']) : '-'; ?></td>
-                                    <td>
-                                        <button class="wx-btn wx-btn-sm wx-btn-danger" onclick="if(confirm('确定删除该用户的所有H5弹珠台数据？')){deletePlinkoUser(<?php echo $user['uid']; ?>)}">删除</button>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                                <?php if (empty($users)): ?>
-                                <tr><td colspan="6" class="wx-empty">暂无玩家数据</td></tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                    <?php if ($totalPages > 1): ?>
-                    <div class="pagination-admin" style="margin-top:0;">
-                        <?php for ($i = 1; $i <= $totalPages; $i++):
-                            $active = $i == $page ? 'active' : '';
-                            echo '<a href="./plugin.php?plugin=wx_games&game=plinko&tab=admin&page=' . $i . '&search=' . urlencode($search) . '" class="pagi-link ' . $active . '">' . $i . '</a>';
-                        endfor; ?>
-                    </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
 
 
         <!-- ========== AI管理 ========== -->
@@ -599,6 +467,26 @@ $colors = ['#e74c3c','#d63031','#e17055','#2ecc71','#e67e22','#fdcb6e'];
             </div>
             </form>
         </div>
+
+        <!-- 积分管理 Tab -->
+        <div class="tab-pane fade" id="score-mgmt">
+        <?php echo wx_admin_score_tab_html('plinko', true); ?>
+        </div>
+
+        <!-- 收益分析 Tab -->
+        <div class="tab-pane fade" id="profit-analysis">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>📊 收益分析 — 风险×行数组合性价比</span>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadAnalysis()">刷新分析</button>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">统计所有用户逐球记录，对比理论期望收益 (EV) 与实际平均收益，找出最优风险×行数组合。</p>
+                <div id="analysisContent" class="table-responsive"><p class="text-center text-muted py-4">点击「刷新分析」开始计算</p></div>
+            </div>
+        </div>
+        </div>
+
         </div> <!-- end tab-content -->
     </div> <!-- end container-fluid -->
 
@@ -660,6 +548,70 @@ function deletePlinkoUser(uid) {
     }
   }
 })();
+
+function loadAnalysis() {
+    document.getElementById('analysisContent').innerHTML = '<p class="text-center text-muted py-4">正在分析所有弹珠记录...</p>';
+    fetch('?plugin=wx_games&game=plinko&plinko_action=get_analysis')
+        .then(r => r.json()).then(d => {
+            if (d.code !== 0 || !d.data) {
+                document.getElementById('analysisContent').innerHTML = '<p class="text-danger">分析失败</p>';
+                return;
+            }
+            renderAnalysis(d.data);
+        });
+}
+
+function renderAnalysis(data) {
+    const rows = data.combos || [];
+    if (!rows.length) {
+        document.getElementById('analysisContent').innerHTML = '<p class="text-muted">暂无游戏记录</p>';
+        return;
+    }
+    const colors = {
+        '低': '#2ecc71', '中': '#f39c12', '高': '#e74c3c'
+    };
+    let html = '<table class="table table-sm table-striped"><thead><tr>'
+        + '<th>风险</th><th>行数</th><th>总局数</th><th>总投注</th><th>总收益</th><th>ROI%</th>'
+        + '<th>理论EV%</th><th>差值%</th>'
+        + '</tr></thead><tbody>';
+    rows.forEach(r => {
+        const roi = r.total_bet > 0 ? (r.total_profit / r.total_bet * 100) : 0;
+        const diff = roi - (r.ev || 0);
+        const diffClass = diff > 5 ? 'text-success font-weight-bold' : (diff < -20 ? 'text-danger' : '');
+        html += '<tr>'
+            + '<td><span style="color:'+(colors[r.risk]||'#aaa')+'">'+r.risk+'</span></td>'
+            + '<td>'+r.rows+'行</td>'
+            + '<td>'+r.plays+'</td>'
+            + '<td>'+r.total_bet.toFixed(0)+'</td>'
+            + '<td style="color:'+(r.total_profit>=0?'#2ecc71':'#e74c3c')+'">'+(r.total_profit>=0?'+':'')+r.total_profit.toFixed(0)+'</td>'
+            + '<td style="color:'+(roi>=0?'#2ecc71':'#e74c3c')+'">'+(roi>=0?'+':'')+roi.toFixed(2)+'%</td>'
+            + '<td class="text-muted">'+(r.ev||0).toFixed(2)+'%</td>'
+            + '<td class="'+diffClass+'">'+(diff>=0?'+':'')+diff.toFixed(2)+'%</td>'
+            + '</tr>';
+    });
+    html += '</tbody></table>';
+    
+    // Summary: best combo
+    const best = rows.reduce((a,b) => {
+        const roia = a.total_bet>0 ? a.total_profit/a.total_bet*100-a.ev : -999;
+        const roib = b.total_bet>0 ? b.total_profit/b.total_bet*100-b.ev : -999;
+        return roia > roib ? a : b;
+    });
+    const bestRoi = best.total_bet>0 ? best.total_profit/best.total_bet*100 : 0;
+    html += '<div class="alert alert-success mt-3"><strong>🏆 最佳组合：</strong>'+best.risk+'风险 × '+best.rows+'行 — 实际ROI '+(bestRoi>=0?'+':'')+bestRoi.toFixed(2)+'% vs 理论EV '+(best.ev||0).toFixed(2)+'% (超额 '+((bestRoi-best.ev)||0).toFixed(2)+'%)</div>';
+    
+    // Warning for loss-making combos
+    const losses = rows.filter(r => r.total_bet>0 && r.total_profit/r.total_bet*100 < -30);
+    if (losses.length) {
+        html += '<div class="alert alert-warning"><strong>⚠️ 高亏损组合：</strong>';
+        losses.forEach(l => {
+            html += l.risk+'×'+l.rows+'行 ('+(l.total_bet>0?(l.total_profit/l.total_bet*100).toFixed(1):'')+'%) ';
+        });
+        html += '</div>';
+    }
+    
+    document.getElementById('analysisContent').innerHTML = html;
+}
 </script>
 <?php
 }

@@ -272,6 +272,7 @@ function wx_plinko_route_ajax($action) {
         case 'log_ball':       wx_plinko_api_log_ball();       break;
         case 'get_members':    wx_plinko_api_get_members();    break;
         case 'level_up':       wx_plinko_api_level_up();       break;
+        case 'get_analysis': wx_plinko_api_get_analysis(); break;
         default:
             wx_games_error('未知操作');
             return;
@@ -860,4 +861,76 @@ function wx_plinko_api_level_up() {
         wx_games_error('升级失败');
     }
     return;
+}
+
+function wx_plinko_api_get_analysis() {
+    $db = Database::getInstance();
+    $table = DB_PREFIX . 'wx_plinko_games';
+    
+    // Get all ball records grouped by risk + rows
+    $combos = [];
+    $rows = $db->query("SELECT `risk`, `rows`, COUNT(*) AS plays, SUM(`bet`) AS total_bet, SUM(`profit`) AS total_profit FROM `$table` GROUP BY `risk`, `rows` ORDER BY `risk`, `rows`");
+    while ($r = $db->fetch_array($rows)) {
+        $combos[] = [
+            'risk' => $r['risk'],
+            'rows' => (int)$r['rows'],
+            'plays' => (int)$r['plays'],
+            'total_bet' => floatval($r['total_bet']),
+            'total_profit' => floatval($r['total_profit']),
+            'ev' => wx_plinko_calc_ev($r['risk'], (int)$r['rows']),
+        ];
+    }
+    wx_games_ok(['combos' => $combos]);
+}
+
+function wx_plinko_calc_ev($risk, $rows) {
+    // 每个槽的中奖倍率加权平均 → 理论期望收益率
+    // 根据 BIN_PAYOUTS 配置计算
+    $payouts = []; // rows_8 -> risk -> [multipliers]
+    
+    // Hardcode plinko payout config (matches frontend BIN_PAYOUTS)
+    $config = [
+        8 => ['低' => [2.6,1.8,1.1,0.5,0.5,1.1,1.8,2.6,0]],
+                '中' => [5.7,3,1.5,0.6,0.6,1.5,3,5.7,0],
+                '高' => [22,9,3,0.3,0.3,3,9,22,0]],
+        9 => ['低' => [2.5,1.7,1.1,0.7,0.7,1.1,1.7,2.5,0]],
+                '中' => [5.5,2.8,1.4,0.8,0.8,1.4,2.8,5.5,0],
+                '高' => [21,8.5,2.5,0.4,0.4,2.5,8.5,21,0]],
+        10 => ['低' => [2.5,1.7,1.1,0.5,0.5,0.5,1.1,1.7,2.5,0]],
+                 '中' => [5.5,2.8,1.4,0.6,0.6,0.6,1.4,2.8,5.5,0],
+                 '高' => [21,8.5,2.5,0.3,0.3,0.3,2.5,8.5,21,0]],
+        11 => ['低' => [2.6,1.8,1.1,0.5,0.5,0.5,1.1,1.8,2.6,0]],
+                 '中' => [5.7,3,1.5,0.6,0.6,0.6,1.5,3,5.7,0],
+                 '高' => [22,9,3,0.3,0.3,0.3,3,9,22,0]],
+        12 => ['低' => [3.0,2.0,1.2,0.6,0.3,0.3,0.6,1.2,2.0,3.0,0]],
+                 '中' => [13,5,2,0.7,0.4,0.4,0.7,2,5,13,0],
+                 '高' => [50,15,5,1,0.2,0.2,1,5,15,50,0]],
+        13 => ['低' => [3.5,2.2,1.3,0.7,0.4,0.4,0.7,1.3,2.2,3.5,0]],
+                 '中' => [18,6,3,1,0.5,0.5,1,3,6,18,0],
+                 '高' => [60,19,7,2,0.2,0.2,2,7,19,60,0]],
+        14 => ['低' => [4.0,2.5,1.5,0.8,0.3,0.3,0.3,0.8,1.5,2.5,4.0,0]],
+                 '中' => [25,8,4,1.2,0.5,0.5,0.5,1.2,4,8,25,0],
+                 '高' => [72,23,9,3,0.3,0.3,0.3,3,9,23,72,0]],
+        15 => ['低' => [5.0,3.0,1.8,1,0.5,0.2,0.2,0.5,1,1.8,3.0,5.0,0]],
+                 '中' => [36,11,5,2,0.8,0.3,0.3,0.8,2,5,11,36,0],
+                 '高' => [90,30,12,5,1,0.2,0.2,1,5,12,30,90,0]],
+        16 => ['低' => [6.0,3.5,2.0,1.2,0.5,0.2,0.2,0.5,1.2,2.0,3.5,6.0,0]],
+                 '中' => [55,15,7,3,1,0.4,0.4,1,3,7,15,55,0],
+                 '高' => [110,41,16,7,2,0.3,0.3,2,7,16,41,110,0]],
+    ];
+    
+    if (!isset($config[$rows]) || !isset($config[$rows][$risk])) return -50; // fallback
+    
+    $multipliers = $config[$rows][$risk];
+    $n = count($multipliers);
+    if ($n === 0) return -50;
+    
+    // Average multiplier
+    $sum = array_sum($multipliers);
+    $avg = $sum / $n;
+    
+    // EV% = (avg payout per bin) × 100 - 100 (减去下注)
+    // Each bin has equal probability (1/n)
+    // Expected return = (sum of all multipliers / n) * 100% - 100%
+    return round(($avg - 1) * 100, 2);
 }

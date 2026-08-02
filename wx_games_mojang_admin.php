@@ -6,6 +6,7 @@
 !defined('EMLOG_ROOT') && exit('access denied!');
 
 require_once __DIR__ . '/wx_games_mojang_fn.php';
+require_once __DIR__ . '/wx_games_admin_helper.php';
 
 $db = Database::getInstance();
 
@@ -123,21 +124,6 @@ if ($action === 'save_setting') {
     }
     $storage->setValue('ai_players', $ai_players, 'array');
     emMsg('AI设置已保存', './plugin.php?plugin=wx_games&game=mj&tab=basic&saved=1');
-} elseif ($action === 'change_score') {
-    $target_uid = Input::postIntVar('target_uid', 0);
-    $score_change = Input::postIntVar('score_change', 0);
-    $reason = addslashes(trim(Input::postStrVar('reason', '管理员手动调整')));
-    if ($target_uid > 0 && $score_change != 0) {
-        $operator_nick = '';
-        if (function_exists('LoginAuth') && LoginAuth::isLogin()) {
-            $u = LoginAuth::getUserData();
-            $operator_nick = isset($u['nickname']) ? $u['nickname'] : 'admin';
-        }
-        wx_mojang_admin_change_score($target_uid, $score_change, $reason, $operator_nick);
-        emMsg('积分修改成功', './plugin.php?plugin=wx_games&game=mj&tab=score');
-    } else {
-        emMsg('参数无效', './plugin.php?plugin=wx_games&game=mj&tab=score');
-    }
 } elseif ($action === 'delete_user') {
     $del_uid = Input::postIntVar('uid', 0);
     if ($del_uid > 0) {
@@ -209,91 +195,11 @@ if ($action === 'save_setting') {
     wx_mojang_ok();
 }
 
-// ========== 日志分页 AJAX ==========
-if (Input::getStrVar('mj_action') === 'get_logs_page') {
-    $log_page = max(1, Input::getIntVar('log_page', 1));
-    $log_search = addslashes(trim(Input::getStrVar('search', '')));
-    $logPageSize = 10;
-    $log_offset = ($log_page - 1) * $logPageSize;
-    $table_logs = DB_PREFIX . 'wx_games_logs';
-    $log_where = "WHERE l.`game` = 'mj'";
-    if ($log_search) {
-        $log_where .= " AND (l.`nickname` LIKE '%$log_search%' OR l.`uid` = '" . intval($log_search) . "')";
-    }
-    $db = Database::getInstance();
-    $total = (int)$db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `$table_logs` l $log_where")['cnt'];
-    $totalPages = max(1, ceil($total / $logPageSize));
-    $rows = $db->query("SELECT l.*, IFNULL(u.nickname, '未知') AS nickname FROM `$table_logs` l LEFT JOIN `" . DB_PREFIX . "user` u ON l.uid = u.uid $log_where ORDER BY l.created_at DESC LIMIT $log_offset, $logPageSize");
-    $data = [];
-    while ($r = $db->fetch_array($rows)) {
-        $data[] = $r;
-    }
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['code' => 0, 'data' => $data, 'totalPages' => $totalPages, 'currentPage' => $log_page], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-// ========== 用户列表分页 AJAX ==========
-if (Input::getStrVar('mj_action') === 'get_users_page') {
-    $page = max(1, Input::getIntVar('page', 1));
-    $search = addslashes(trim(Input::getStrVar('search', '')));
-    $pageSize = 10;
-    $offset = ($page - 1) * $pageSize;
-    $db = Database::getInstance();
-    $table_scores = DB_PREFIX . 'wx_games_scores';
-    $where = "WHERE `game` = 'mj' AND `is_ai` = 0";
-    if ($search) {
-        $where = "WHERE (`nickname` LIKE '%$search%' OR `uid` = '$search') AND `game` = 'mj' AND `is_ai` = 0";
-    }
-    $total = (int)$db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `$table_scores` $where")['cnt'];
-    $totalPages = max(1, ceil($total / $pageSize));
-    $rows = $db->query("SELECT * FROM `$table_scores` $where ORDER BY `score` DESC LIMIT $offset, $pageSize");
-    $data = [];
-    while ($row = $db->fetch_array($rows)) {
-        $uid = (int)$row['uid'];
-        $user_row = $db->once_fetch_array("SELECT `nickname`, `photo` FROM `" . DB_PREFIX . "user` WHERE `uid` = $uid LIMIT 1");
-        $data[] = [
-            'id' => (int)$row['id'],
-            'uid' => $uid,
-            'nickname' => $user_row ? $user_row['nickname'] : $row['nickname'],
-            'avatar' => $user_row ? $user_row['photo'] : '',
-            'score' => (int)$row['score'],
-            'total_games' => (int)$row['total_games'],
-            'wins' => (int)$row['wins'],
-            'losses' => (int)$row['losses'],
-            'draws' => (int)$row['draws'],
-            'best_score' => (int)$row['best_score'],
-        ];
-    }
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['code' => 0, 'data' => $data, 'totalPages' => $totalPages, 'currentPage' => $page], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-// ========== 数据清理（复选框分项）==========
-if (Input::postStrVar('mj_action') === 'reset_data') {
-    $db_clr = Database::getInstance();
-    $actions = [];
-    if (isset($_POST['reset_scores'])) $actions[] = '积分';
-    if (isset($_POST['reset_games']))  $actions[] = '战绩';
-    if (isset($_POST['reset_items']))  $actions[] = '道具';
-    if (!empty($actions)) {
-        if (isset($_POST['reset_scores'])) {
-            $db_clr->query("DELETE FROM `" . DB_PREFIX . "wx_games_scores` WHERE `game` = 'mj' AND `is_ai` = 0");
-            $db_clr->query("DELETE FROM `" . DB_PREFIX . "wx_games_logs`");
-        }
-        if (isset($_POST['reset_games'])) {
-            $db_clr->query("DELETE FROM `" . DB_PREFIX . "wx_mojang_games`");
-        }
-        if (isset($_POST['reset_items'])) {
-            $db_clr->query("DELETE FROM `" . DB_PREFIX . "wx_games_shop_items` WHERE `game` = 'mj'");
-            $db_clr->query("DELETE FROM `" . DB_PREFIX . "wx_games_user_items` WHERE `game` = 'mj'");
-        }
-        emMsg('已清理：' . implode('、', $actions), './plugin.php?plugin=wx_games&game=mj');
-    } else {
-        emMsg('请至少勾选一项', './plugin.php?plugin=wx_games&game=mj');
-    }
-}
+// ========== 积分管理 AJAX ==========
+wx_admin_score_ops('mj', 'wx_mojang_games');
+if (Input::getStrVar('mj_action') === 'get_users_page') { wx_admin_ajax_users_page('mj'); }
+if (Input::getStrVar('mj_action') === 'get_logs_page') { wx_admin_ajax_logs_page('mj'); }
+if (Input::getStrVar('mj_action') === 'get_backpack') { wx_admin_ajax_backpack('mj'); }
 
 // ========== 积分管理数据 ==========
 $table_scores = DB_PREFIX . 'wx_games_scores';
@@ -444,7 +350,7 @@ function wx_mojang_admin_render() {
 <ul class="nav nav-tabs mb-4" id="mjSettingTabs" role="tablist">
     <li class="nav-item"><a class="nav-link active" id="mj-basic-tab" data-toggle="tab" href="#mj-basic" role="tab">基本设置</a></li>
     <li class="nav-item"><a class="nav-link" id="mj-ai-tab" data-toggle="tab" href="#mj-ai" role="tab">AI玩家设置</a></li>
-    <li class="nav-item"><a class="nav-link" id="mj-score-tab" data-toggle="tab" href="#mj-score" role="tab">积分管理</a></li>
+    <li class="nav-item"><a class="nav-link" id="mj-score-tab" data-toggle="tab" href="#score-mgmt" role="tab">积分管理</a></li>
 </ul>
 
 <div class="tab-content" id="mjSettingTabsContent">
@@ -668,170 +574,8 @@ function wx_mojang_admin_render() {
             </style>
 </div>
 
-<div class="tab-pane fade" id="mj-score" role="tabpanel">
-    <!-- ========== 积分管理 ========== -->
-    <div class="row">
-        <div class="col-lg-6">
-            <!-- 积分查询与修改 -->
-            <div class="wx-card card-dark mb-4">
-                <div class="card-header">积分查询与修改</div>
-                <div class="card-body">
-                    <form method="post" class="mb-3" style="max-width:400px">
-                        <input type="hidden" name="mj_action" value="change_score">
-                        <div class="form-group">
-                            <label>用户ID</label>
-                            <input class="form-control" name="target_uid" type="number" min="1" required>
-                        </div>
-                        <div class="form-group">
-                            <label>积分变动（正=增加，负=扣除）</label>
-                            <input class="form-control" name="score_change" type="number" required>
-                        </div>
-                        <div class="form-group">
-                            <label>原因</label>
-                            <input class="form-control" name="reason" value="管理员手动调整">
-                        </div>
-                        <button type="submit" class="wx-btn">提交修改</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-6">
-            <!-- 积分变动日志 -->
-            <div class="wx-card card-dark mb-4">
-                <div class="card-header">积分变动日志（共 <?php echo $total_log_count; ?> 条）</div>
-                <div class="card-body" style="padding:0;">
-                    <div style="overflow-x:auto;">
-                        <table class="table-admin">
-                            <thead>
-                                <tr>
-                                    <th>时间</th>
-                                    <th>用户</th>
-                                    <th>变动</th>
-                                    <th>变动前</th>
-                                    <th>变动后</th>
-                                    <th>原因</th>
-                                    <th>操作者</th>
-                                </tr>
-                            </thead>
-                            <tbody id="logTableBody">
-                                <?php foreach ($logs as $log): ?>
-                                <tr>
-                                    <td style="white-space:nowrap;"><?php echo $log['created']; ?></td>
-                                    <td><?php echo htmlspecialchars($log['nickname']); ?></td>
-                                    <td>
-                                        <?php if ($log['score_change'] > 0): ?>
-                                        <span class="win-text">+<?php echo $log['score_change']; ?></span>
-                                        <?php else: ?>
-                                        <span class="lose-text"><?php echo $log['score_change']; ?></span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><?php echo $log['score_before']; ?></td>
-                                    <td><?php echo $log['score_after']; ?></td>
-                                    <td><?php echo htmlspecialchars($log['reason']); ?></td>
-                                    <td><?php echo htmlspecialchars($log['operator']); ?></td>
-                                </tr>
-                                <?php endforeach; ?>
-                                <?php if (empty($logs)): ?>
-                                <tr><td colspan="7" class="wx-empty">暂无日志</td></tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                    <?php if ($logTotalPages > 1): ?>
-                    <div class="pagination-admin" style="margin-top:0;" id="logPagination">
-                        <?php
-                        $logStart = max(1, $logPage - 2);
-                        $logEnd = min($logTotalPages, $logPage + 2);
-                        if ($logStart > 1) {
-                            echo '<a href="javascript:void(0)" onclick="loadLogsPage(1)" class="pagi-link">1</a>';
-                            if ($logStart > 2) echo '<span style="padding:6px 8px;color:#999;">...</span>';
-                        }
-                        for ($i = $logStart; $i <= $logEnd; $i++) {
-                            $active = $i == $logPage ? 'active' : '';
-                            echo '<a href="javascript:void(0)" onclick="loadLogsPage(' . $i . ')" class="pagi-link ' . $active . '">' . $i . '</a>';
-                        }
-                        if ($logEnd < $logTotalPages) {
-                            if ($logEnd < $logTotalPages - 1) echo '<span style="padding:6px 8px;color:#999;">...</span>';
-                            echo '<a href="javascript:void(0)" onclick="loadLogsPage(' . $logTotalPages . ')" class="pagi-link">' . $logTotalPages . '</a>';
-                        }
-                        ?>
-                    </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 用户积分列表 -->
-    <div class="wx-card card-dark">
-        <div class="card-header">用户积分列表</div>
-        <div class="card-body" style="padding:0;">
-            <div style="padding:16px 22px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-                <span>共 <strong><?php echo $total_users_count; ?></strong> 条记录</span>
-                <form method="get" action="./plugin.php" class="form-inline" style="display:flex;gap:8px;">
-                    <input type="hidden" name="plugin" value="wx_mojang">
-                    <input type="hidden" name="tab" value="score">
-                    <input type="text" name="search" class="form-control" placeholder="搜索用户ID或昵称" value="<?php echo htmlspecialchars($search); ?>" style="width:200px;">
-                    <button type="submit" class="wx-btn wx-btn-sm">搜索</button>
-                </form>
-            </div>
-            <div style="overflow-x:auto;">
-                <table class="table-admin">
-                    <thead>
-                        <tr>
-                            <th>排名</th>
-                            <th>UID</th>
-                            <th>昵称</th>
-                            <th>当前积分</th>
-                            <th>场次</th>
-                            <th>胜/负/平</th>
-                            <th>最高分</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="userTableBody">
-                        <?php foreach ($users as $index => $user): ?>
-                        <tr>
-                            <td><?php echo ($page - 1) * $pageSize + $index + 1; ?></td>
-                            <td><?php echo $user['uid']; ?></td>
-                            <td>
-                                <?php if ($user['avatar']): ?>
-                                <img src="<?php echo $user['avatar']; ?>" style="width:24px;height:24px;border-radius:50%;vertical-align:middle;margin-right:4px;">
-                                <?php endif; ?>
-                                <?php echo htmlspecialchars($user['nickname']); ?>
-                            </td>
-                            <td><span class="badge-score"><?php echo $user['score']; ?></span></td>
-                            <td><?php echo $user['total_games']; ?></td>
-                            <td>
-                                <span class="win-text"><?php echo $user['wins']; ?>胜</span> /
-                                <span class="lose-text"><?php echo $user['losses']; ?>负</span> /
-                                <span style="color:#999;"><?php echo $user['draws']; ?>平</span>
-                            </td>
-                            <td><?php echo $user['best_score']; ?></td>
-                            <td>
-                                <button type="button" class="wx-btn wx-btn-sm btn-change-score" data-uid="<?php echo $user['uid']; ?>" data-score="<?php echo $user['score']; ?>" data-nick="<?php echo htmlspecialchars($user['nickname'], ENT_QUOTES); ?>">修改积分</button>
-                                <button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#4facfe,#00f2fe);margin-left:4px;" onclick="showUserLog(<?php echo $user['uid']; ?>, '<?php echo htmlspecialchars($user['nickname'], ENT_QUOTES); ?>')">流水</button>
-                                <button type="button" class="wx-btn wx-btn-sm wx-btn-danger" style="margin-left:4px;" onclick="deleteUser(<?php echo $user['uid']; ?>)">删除</button>
-                                <button type="button" class="wx-btn wx-btn-sm" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb);margin-left:4px;" onclick="openBackpack(<?php echo $user['uid']; ?>, '<?php echo htmlspecialchars($user['nickname'], ENT_QUOTES); ?>')">背包</button>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                        <?php if (empty($users)): ?>
-                        <tr><td colspan="8" class="wx-empty">暂无数据</td></tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-            <?php if ($totalPages > 1): ?>
-            <div class="pagination-admin" id="userPagination">
-                <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                <a href="javascript:void(0)" onclick="loadUsersPage(<?php echo $i; ?>)" class="<?php echo $i == $page ? 'active' : ''; ?>"><?php echo $i; ?></a>
-                <?php endfor; ?>
-            </div>
-            <?php endif; ?>
-        </div>
-    </div>
-</div>
+<?php echo wx_admin_score_tab_html('mj'); ?>
+</div><!-- /tab-content -->
 
 <!-- 修改积分弹窗（动态单例） -->
 <div class="modal fade" id="scoreModal" tabindex="-1" role="dialog" aria-hidden="true">
