@@ -166,20 +166,22 @@ const HuChecker = {
     /**
      * 检查是否胡牌（标准4面子+1雀头，或特殊牌型）
      * @param {Array} tiles - 手牌
+     * @param {Array} externalTiles - 外部可用牌（如打出牌、弃牌堆）
      * @returns {boolean}
      */
-    isHu(tiles) {
+    isHu(tiles, externalTiles = []) {
         if (tiles.length % 3 !== 2 || tiles.length < 2) return false;
 
         // Block优化：如果隔断块数>6，不可能和牌，提前返回
-        // 计算块数：相邻的牌构成一块，隔断>6表示牌太散
         if (this._countBlocks(tiles) > 6) return false;
 
         // 特殊牌型：七对
         if (tiles.length === 14 && this._isQiDui(tiles)) return true;
 
-        // 标准4面子+1雀头
-        return this._canFormMelds(this.countTiles(tiles), 1);
+        // 合并手牌 + 外部可用牌（弃牌堆里"已出"的牌，玩家也能识别）
+        const allTiles = externalTiles && externalTiles.length > 0
+            ? [...tiles, ...externalTiles] : tiles;
+        return this._canFormMelds(this.countTiles(allTiles), 1);
     },
 
     /**
@@ -290,7 +292,7 @@ const HuChecker = {
 
         for (const tile of allTiles) {
             const testHand = [...hand, { ...tile }];
-            if (this.isHu(testHand)) {
+            if (this.isHu(testHand, allDiscarded)) {
                 const waitType = this._determineWaitType(hand, tile);
                 waitingTiles.push({ tile: tile.id, type: waitType });
             }
