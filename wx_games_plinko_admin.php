@@ -552,7 +552,10 @@ function deletePlinkoUser(uid) {
 
 function loadAnalysis() {
     document.getElementById('analysisContent').innerHTML = '<p class="text-center text-muted py-4">正在分析...</p>';
-    fetch('./plugin.php?plugin=wx_games&game=plinko&plinko_action=get_analysis')
+    const fd = new FormData();
+    fd.append('plinko_action', 'get_analysis');
+    fd.append('game', 'plinko');
+    fetch('./plugin.php?plugin=wx_games&game=plinko', { method: 'POST', body: fd })
         .then(r => r.json()).then(d => {
             if (d.code !== 0 || !d.data) {
                 document.getElementById('analysisContent').innerHTML = '<p class="text-danger">分析失败</p>';

@@ -77,8 +77,8 @@ function wx_admin_score_ops($game, $game_table = '', $use_accounts_table = false
  * 通用 AJAX - 用户列表分页
  */
 function wx_admin_ajax_users_page($game, $use_accounts_table = false) {
-    $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
-    $search = isset($_GET['search']) ? addslashes(trim($_GET['search'])) : '';
+    $page = isset($_POST['page']) ? max(1, intval($_POST['page'])) : 1;
+    $search = isset($_POST['search']) ? addslashes(trim($_POST['search'])) : '';
     $pageSize = 10;
     $offset = ($page - 1) * $pageSize;
     $db = Database::getInstance();
@@ -150,8 +150,8 @@ function wx_admin_ajax_users_page($game, $use_accounts_table = false) {
  * 通用 AJAX - 积分流水分页
  */
 function wx_admin_ajax_logs_page($game) {
-    $log_page = isset($_GET['log_page']) ? max(1, intval($_GET['log_page'])) : 1;
-    $log_search = isset($_GET['search']) ? addslashes(trim($_GET['search'])) : '';
+    $log_page = isset($_POST['log_page']) ? max(1, intval($_POST['log_page'])) : 1;
+    $log_search = isset($_POST['search']) ? addslashes(trim($_POST['search'])) : '';
     $logPageSize = 10;
     $log_offset = ($log_page - 1) * $logPageSize;
     $db = Database::getInstance();
@@ -212,7 +212,7 @@ function wx_admin_ajax_logs_page($game) {
  * 通用 AJAX - 背包查看
  */
 function wx_admin_ajax_backpack($game) {
-    $uid = isset($_GET['uid']) ? intval($_GET['uid']) : 0;
+    $uid = isset($_POST['uid']) ? intval($_POST['uid']) : 0;
     if ($uid <= 0) {
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['code' => 1, 'message' => 'UID无效'], JSON_UNESCAPED_UNICODE);
@@ -441,13 +441,20 @@ const GAME = '<?= $game ?>';
 const ACTION_KEY = '<?= $action_key ?>';
 let scorePage = 1, logPage = 1, scoreSearch = '';
 
+// 统一 POST AJAX（emlog 管理后台会过滤 GET 参数）
+function postAjax(params) {
+    const fd = new FormData();
+    for (const k in params) fd.append(k, params[k]);
+    return fetch('./plugin.php?plugin=wx_games&game=' + (params.game || GAME), { method: 'POST', body: fd });
+}
+
 function loadUsers(p) {
     scorePage = p || scorePage;
     try {
         const el = document.getElementById('scoreSearch');
         scoreSearch = el ? el.value.trim() : '';
     } catch(e) { scoreSearch = ''; }
-    fetch(`?plugin=wx_games&game=${GAME}&${ACTION_KEY}=get_users_page&page=${scorePage}&search=${encodeURIComponent(scoreSearch)}`)
+    postAjax({game: GAME, [ACTION_KEY]: 'get_users_page', page: scorePage, search: scoreSearch})
         .then(r => r.json()).then(d => {
             if (d.code !== 0) { document.getElementById('scoreTbody').innerHTML = '<tr><td colspan="8" class="wx-empty">加载失败</td></tr>'; return; }
             if (!d.data || d.data.length === 0) {
@@ -505,7 +512,7 @@ function showUserLog(uid, nick) {
 }
 function loadLogs(uid, p) {
     logPage = p || logPage;
-    fetch(`./plugin.php?plugin=wx_games&game=${GAME}&${ACTION_KEY}=get_logs_page&log_page=${logPage}&search=${uid}`)
+    postAjax({game: GAME, [ACTION_KEY]: 'get_logs_page', log_page: logPage, search: uid})
         .then(r => r.json()).then(d => {
             const head = document.getElementById('logModalHead');
             const tbody = document.getElementById('logTbody');
@@ -569,7 +576,7 @@ function deleteUser(uid) {
 }
 
 function showBackpack(uid) {
-    fetch(`./plugin.php?plugin=wx_games&game=${GAME}&${ACTION_KEY}=get_backpack&uid=${uid}`)
+    postAjax({game: GAME, [ACTION_KEY]: 'get_backpack', uid: uid})
         .then(r => {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.text().then(t => {
@@ -621,7 +628,7 @@ function loadAllLogs(page) {
     const tbody = document.getElementById('logTableBody');
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载中...</td></tr>';
-    fetch(`?plugin=wx_games&game=${GAME}&${ACTION_KEY}=get_logs_page&log_page=${page}`)
+    postAjax({game: GAME, [ACTION_KEY]: 'get_logs_page', log_page: page})
         .then(r => r.json()).then(d => {
             if (d.code !== 0 || !d.data) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载失败</td></tr>'; return; }
             if (d.data.length === 0) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">暂无流水记录</td></tr>'; return; }

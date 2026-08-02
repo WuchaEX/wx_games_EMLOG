@@ -31,24 +31,23 @@ if ($wxg_game === 'shop') {
     require_once __DIR__ . '/wx_games_plinko_admin.php';
 }
 
-// ========== 通用 AJAX（顶层拦截，在 plugin_setting_view 之前） ==========
+// ========== 通用 AJAX（POST 拦截，在 plugin_setting_view 之前） ==========
 require_once __DIR__ . '/wx_games_admin_helper.php';
-// 调试（用后删除）：任意 AJAX 请求都写日志
-@file_put_contents(__DIR__ . '/ajax_debug.log', date('Y-m-d H:i:s') . " GET=" . json_encode($_GET) . "\n", FILE_APPEND);
-if (!empty($_GET['plinko_action'])) {
-    $act = $_GET['plinko_action'];
+if (!empty($_POST['plinko_action'])) {
+    $act = $_POST['plinko_action'];
     if ($act === 'get_users_page') { wx_admin_ajax_users_page('plinko', true); }
     elseif ($act === 'get_logs_page') { wx_admin_ajax_logs_page('plinko'); }
     elseif ($act === 'get_backpack') { wx_admin_ajax_backpack('plinko'); }
+    elseif ($act === 'get_analysis') { require_once __DIR__ . '/wx_games_plinko_fn.php'; wx_plinko_api_get_analysis(); }
 }
-if (!empty($_GET['mj_action'])) {
-    $act = $_GET['mj_action'];
+if (!empty($_POST['mj_action'])) {
+    $act = $_POST['mj_action'];
     if ($act === 'get_users_page') { wx_admin_ajax_users_page('mj'); }
     elseif ($act === 'get_logs_page') { wx_admin_ajax_logs_page('mj'); }
     elseif ($act === 'get_backpack') { wx_admin_ajax_backpack('mj'); }
 }
-if (!empty($_GET['niuniu_action'])) {
-    $act = $_GET['niuniu_action'];
+if (!empty($_POST['niuniu_action'])) {
+    $act = $_POST['niuniu_action'];
     if ($act === 'get_users_page') { wx_admin_ajax_users_page('niuniu'); }
     elseif ($act === 'get_logs_page') { wx_admin_ajax_logs_page('niuniu'); }
     elseif ($act === 'get_backpack') { wx_admin_ajax_backpack('niuniu'); }
