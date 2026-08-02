@@ -476,10 +476,10 @@ $colors = ['#e74c3c','#d63031','#e17055','#2ecc71','#e67e22','#fdcb6e'];
 
         <!-- 收益分析 Tab -->
         <div class="tab-pane fade" id="profit-analysis">
-        <div class="card">
+        <div class="wx-card card-dark">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>📊 收益分析 — 风险×行数组合性价比</span>
-                <button class="btn btn-sm btn-outline-primary" onclick="loadAnalysis()">刷新分析</button>
+                <button class="wx-btn wx-btn-sm" onclick="loadAnalysis()">刷新分析</button>
             </div>
             <div class="card-body">
                 <p class="text-muted small">统计所有用户逐球记录，对比理论期望收益 (EV) 与实际平均收益，找出最优风险×行数组合。</p>
