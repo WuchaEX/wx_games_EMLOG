@@ -8,7 +8,7 @@ $base_url = BLOG_URL . 'admin/plugin.php?plugin=wx_games&game=shop';
 $filter = isset($_GET['filter']) ? preg_replace('/[^a-z0-9_]/', '', $_GET['filter']) : 'global';
 
 // ========== 道具类型映射 ==========
-$ITEM_TYPES = [
+$ALL_ITEM_TYPES = [
     'title_colored'    => '昵称变色',
     'title_effect'     => '昵称特效',
     'title_badge'      => '称号徽章',
@@ -22,6 +22,26 @@ $ITEM_TYPES = [
     'plinko_theme'     => '钉阵主题',
     'member_unlock'    => '成员解锁',
 ];
+// 各游戏支持的道具类型（与 fn.php 实现一致）
+$GAME_ITEM_TYPES = [
+    'ddz'    => ['title_colored', 'title_effect', 'title_badge', 'card_back', 'emoticon', 'bomb_effect', 'score_buff'],
+    'mj'     => ['title_colored', 'title_effect', 'title_badge', 'score_buff'],
+    'niuniu' => ['title_colored', 'title_effect', 'title_badge', 'card_back', 'emoticon', 'score_buff'],
+    'plinko' => ['plinko_coin_pack', 'plinko_skin', 'plinko_theme', 'member_unlock', 'score_buff'],
+];
+// 通用道具（适用于所有游戏）= 4 个游戏都支持
+$GLOBAL_ITEM_TYPES = ['score_buff'];
+foreach ($GAME_ITEM_TYPES as $gk => $types) {
+    $GLOBAL_ITEM_TYPES = array_intersect($GLOBAL_ITEM_TYPES, $types);
+}
+// 按当前 $filter 决定显示哪些类型
+if ($filter === 'global') {
+    $ITEM_TYPES = array_intersect_key($ALL_ITEM_TYPES, array_flip($GLOBAL_ITEM_TYPES));
+} elseif (isset($GAME_ITEM_TYPES[$filter])) {
+    $ITEM_TYPES = array_intersect_key($ALL_ITEM_TYPES, array_flip($GAME_ITEM_TYPES[$filter]));
+} else {
+    $ITEM_TYPES = $ALL_ITEM_TYPES; // "全部" Tab 显示所有
+}
 $ITEM_TYPE_ICONS = [
     'title_colored' => ['🎨', '{"color":"#ff4500"}'],
     'title_effect'  => ['✨', '{"effect":"glow","color":"gold"}'],
@@ -148,8 +168,16 @@ $total_count = count($display_items);
                 <div class="row">
                     <div class="col-md-3"><div class="form-group"><label>名称</label><input class="form-control" name="name" required></div></div>
                     <div class="col-md-3"><div class="form-group"><label>类型</label><select class="form-control" name="item_type" onchange="updateHint(this.value,'add')"><?php foreach ($ITEM_TYPES as $tk => $tl): ?><option value="<?= $tk ?>"><?= $tl ?></option><?php endforeach; ?></select></div></div>
-                    <div class="col-md-3"><div class="form-group"><label>归属</label><select class="form-control" name="game"><?php foreach ($GAME_NAMES as $gk => $gn): ?><option value="<?= $gk ?>" <?= $filter === $gk ? 'selected' : '' ?>><?= $gn ?></option><?php endforeach; ?></select></div></div>
-                    <div class="col-md-3"><div class="form-group"><label>通用</label><select class="form-control" name="is_global"><option value="0">否</option><option value="1">是</option></select></div></div>
+                    <?php if (isset($GAME_ITEM_TYPES[$filter])): ?>
+                        <input type="hidden" name="game" value="<?= $filter ?>">
+                        <input type="hidden" name="is_global" value="0">
+                        <div class="col-md-3"><div class="form-group"><label>归属</label><input class="form-control" value="<?= $GAME_NAMES[$filter] ?> 专属" disabled></div></div>
+                        <div class="col-md-3"><div class="form-group"><label>通用</label><input class="form-control" value="否" disabled></div></div>
+                    <?php else: ?>
+                        <input type="hidden" name="game" value="">
+                        <div class="col-md-3"><div class="form-group"><label>归属</label><select class="form-control" name="game"><?php foreach ($GAME_NAMES as $gk => $gn): ?><option value="<?= $gk ?>"><?= $gn ?></option><?php endforeach; ?></select></div></div>
+                        <div class="col-md-3"><div class="form-group"><label>通用</label><select class="form-control" name="is_global"><option value="1" selected>是</option><option value="0">否</option></select></div></div>
+                    <?php endif; ?>
                 </div>
                 <div class="row">
                     <div class="col-md-6"><div class="form-group"><label>效果数据 <span id="addHint" style="color:#999;font-weight:400;">{}</span></label><input class="form-control" name="effect_data" value='{}'></div></div>
@@ -224,8 +252,15 @@ $total_count = count($display_items);
             <div class="row">
                 <div class="col-md-3"><div class="form-group"><label>名称</label><input class="form-control" name="name" id="ename" required></div></div>
                 <div class="col-md-3"><div class="form-group"><label>类型</label><select class="form-control" name="item_type" id="etype" onchange="updateHint(this.value,'edit')"><?php foreach ($ITEM_TYPES as $tk => $tl): ?><option value="<?= $tk ?>"><?= $tl ?></option><?php endforeach; ?></select></div></div>
-                <div class="col-md-3"><div class="form-group"><label>归属</label><select class="form-control" name="game" id="egame"><?php foreach ($GAME_NAMES as $gk => $gn): ?><option value="<?= $gk ?>"><?= $gn ?></option><?php endforeach; ?></select></div></div>
-                <div class="col-md-3"><div class="form-group"><label>通用</label><select class="form-control" name="is_global" id="eglobal"><option value="0">否</option><option value="1">是</option></select></div></div>
+                <?php if (isset($GAME_ITEM_TYPES[$filter])): ?>
+                    <input type="hidden" name="game" id="egame">
+                    <input type="hidden" name="is_global" id="eglobal" value="0">
+                    <div class="col-md-3"><div class="form-group"><label>归属</label><input class="form-control" id="egame_disp" disabled></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>通用</label><input class="form-control" value="否" disabled></div></div>
+                <?php else: ?>
+                    <div class="col-md-3"><div class="form-group"><label>归属</label><select class="form-control" name="game" id="egame"><?php foreach ($GAME_NAMES as $gk => $gn): ?><option value="<?= $gk ?>"><?= $gn ?></option><?php endforeach; ?></select></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>通用</label><select class="form-control" name="is_global" id="eglobal"><option value="1">是</option><option value="0">否</option></select></div></div>
+                <?php endif; ?>
             </div>
             <div class="row">
                 <div class="col-md-6"><div class="form-group"><label>效果数据 <span id="editHint" style="color:#999;font-weight:400;">{}</span></label><input class="form-control" name="effect_data" id="eeffect"></div></div>
@@ -287,7 +322,17 @@ function openEdit(id,name,type,game,global,effect,pe,pg,desc,icon,sort,status,st
     document.getElementById('ename').value = name;
     document.getElementById('etype').value = type;
     document.getElementById('egame').value = game;
-    document.getElementById('eglobal').value = global;
+    var gameDisp = document.getElementById('egame_disp');
+    if (gameDisp) {
+        var gameNames = <?php echo json_encode($GAME_NAMES); ?>;
+        gameDisp.value = (global ? '🌐 通用' : (gameNames[game] || game));
+    }
+    if (global) {
+        document.getElementById('eglobal').value = 1;
+    } else {
+        var eglobalEl = document.getElementById('eglobal');
+        if (eglobalEl) eglobalEl.value = 0;
+    }
     document.getElementById('eeffect').value = effect;
     document.getElementById('eprice_emlog').value = pe;
     document.getElementById('eprice_game').value = pg;
