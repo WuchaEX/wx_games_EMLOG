@@ -1629,7 +1629,7 @@ function loadLogsPage(page) {
                 }
                 var change = parseInt(log.score_change);
                 var changeHtml = change > 0 ? '<span class="win-text">+' + change + '</span>' : '<span class="lose-text">' + change + '</span>';
-                var nick = log.nickname && log.nickname.indexOf('UID:') === -1 ? log.nickname : ('UID:' + log.uid);
+                var nick = log.nickname ? (log.nickname + ' (UID:' + log.uid + ')') : ('UID:' + log.uid);
                 html += '<tr><td style="white-space:nowrap;">' + time + '</td><td>' + escapeHtml(nick) + '</td><td>' + changeHtml + '</td><td>' + (log.score_before || 0) + '</td><td>' + (log.score_after || 0) + '</td><td>' + (log.reason || '') + '</td><td>' + (log.operator || '') + '</td></tr>';
             });
             tbody.innerHTML = html;
