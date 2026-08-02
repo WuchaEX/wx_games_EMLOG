@@ -3,9 +3,14 @@ defined('EMLOG_ROOT') || exit('access denied!');
 
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
+ini_set('log_errors', 1);
+ini_set('error_log', __DIR__ . '/plinko_debug.log');
+error_log('[PLINKO_ADMIN] file loaded at ' . date('Y-m-d H:i:s'));
 
 require_once __DIR__ . '/wx_games_plinko_fn.php';
+error_log('[PLINKO_ADMIN] fn loaded');
 require_once __DIR__ . '/wx_games_admin_helper.php';
+error_log('[PLINKO_ADMIN] helper loaded');
 
 $db = Database::getInstance();
 $storage = Storage::getInstance('wx_plinko'); // config 仍走 emlog_storage，与 ddz/mj/niuniu 一致

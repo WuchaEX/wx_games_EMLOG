@@ -88,6 +88,7 @@ select.form-control{padding:5px 8px;min-width:0}
             echo '<div class="alert alert-danger">niuniu admin 加载失败</div>';
         }
     } elseif ($game === 'plinko') {
+        error_log('[SETTING] plinko branch, function_exists=' . (function_exists('wx_plinko_admin_render') ? 'YES' : 'NO'));
         if (function_exists('wx_plinko_admin_render')) {
             wx_plinko_admin_render();
         } else {
