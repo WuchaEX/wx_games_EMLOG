@@ -111,6 +111,9 @@ function wx_admin_ajax_users_page($game, $use_accounts_table = false) {
                 'score' => floatval($row['balance']),
                 'total_games' => (int)$row['play_count'],
                 'wins' => 0,
+                'losses' => 0,
+                'draws' => 0,
+                'best_score' => (int)$row['exp'],  // plinko 用 exp 替代最高分
             ];
         }
     } else {
@@ -152,6 +155,42 @@ function wx_admin_ajax_logs_page($game) {
     $logPageSize = 10;
     $log_offset = ($log_page - 1) * $logPageSize;
     $db = Database::getInstance();
+
+    if ($game === 'plinko') {
+        // plinko 流水：每颗弹珠的记录来自 wx_plinko_games
+        $table_logs = DB_PREFIX . 'wx_plinko_games';
+        $log_where = "WHERE 1=1";
+        if ($log_search) {
+            $uid_search = intval($log_search);
+            if ($uid_search > 0) {
+                $log_where .= " AND g.`uid` = $uid_search";
+            } else {
+                $log_where .= " AND g.`uid` IN (SELECT `uid` FROM `" . DB_PREFIX . "user` WHERE `nickname` LIKE '%$log_search%')";
+            }
+        }
+        $total = (int)$db->once_fetch_array("SELECT COUNT(*) AS cnt FROM `$table_logs` g $log_where")['cnt'];
+        $totalPages = max(1, ceil($total / $logPageSize));
+        $rows = $db->query("SELECT g.*, IFNULL(u.nickname, '游客') AS nickname FROM `$table_logs` g LEFT JOIN `" . DB_PREFIX . "user` u ON g.uid = u.uid $log_where ORDER BY g.`created_at` DESC LIMIT $log_offset, $logPageSize");
+        $data = [];
+        while ($r = $db->fetch_array($rows)) {
+            $data[] = [
+                'uid' => (int)$r['uid'],
+                'nickname' => $r['nickname'],
+                'risk' => [0=>'低',1=>'中',2=>'高'][(int)$r['risk']] ?? '中',
+                'rows' => (int)$r['rows'],
+                'bin' => (int)$r['bin'],
+                'bet' => (int)$r['bet'],
+                'multiplier' => floatval($r['multiplier']),
+                'payout' => (int)$r['payout'],
+                'profit' => (int)$r['profit'],
+                'created_at' => (int)$r['created_at'],
+            ];
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['code' => 0, 'data' => $data, 'totalPages' => $totalPages, 'currentPage' => $log_page, 'log_type' => 'plinko'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     $table_logs = DB_PREFIX . 'wx_games_logs';
     $log_where = "WHERE `game` = '$game'";
     if ($log_search) {
@@ -165,7 +204,7 @@ function wx_admin_ajax_logs_page($game) {
         $data[] = $r;
     }
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['code' => 0, 'data' => $data, 'totalPages' => $totalPages, 'currentPage' => $log_page], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['code' => 0, 'data' => $data, 'totalPages' => $totalPages, 'currentPage' => $log_page, 'log_type' => 'score'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -183,14 +222,59 @@ function wx_admin_ajax_backpack($game) {
     // 通用道具 (is_global=1) + 游戏专属道具
     $table_items = DB_PREFIX . 'wx_games_user_items';
     $items = [];
-    $rows = $db->query("SELECT i.*, s.name, s.item_type, s.icon 
-        FROM `$table_items` i 
-        LEFT JOIN `" . DB_PREFIX . "wx_games_shop_items` s ON i.item_id = s.id 
+    $rows = $db->query("SELECT i.*, s.name, s.item_type, s.icon
+        FROM `$table_items` i
+        LEFT JOIN `" . DB_PREFIX . "wx_games_shop_items` s ON i.item_id = s.id
         WHERE i.uid = $uid AND (s.`game` = '$game' OR s.`is_global` = 1 OR s.`game` = 'plinko')
         ORDER BY i.created_at DESC LIMIT 50");
     while ($r = $db->fetch_array($rows)) {
         $items[] = $r;
     }
+
+    // plinko 额外读取已解锁 AI 角色（从 wx_plinko_accounts.members JSON）
+    if ($game === 'plinko') {
+        $acc = $db->once_fetch_array("SELECT `members`, `member_exp`, `exp` FROM `" . DB_PREFIX . "wx_plinko_accounts` WHERE `uid` = $uid LIMIT 1");
+        if ($acc && !empty($acc['members'])) {
+            $members = json_decode($acc['members'], true);
+            if (is_array($members)) {
+                // 读取成员配置（含名字 + 头像）
+                $member_cfg = [];
+                $cfg_row = $db->once_fetch_array("SELECT `value` FROM `" . DB_PREFIX . "wx_games_storage` WHERE `key` = 'plinko.member_config' LIMIT 1");
+                // 简化：从 shop_items 找 member_unlock 道具的 effect_data 反推 ID
+                $cfg_items = $db->query("SELECT `effect_data` FROM `" . DB_PREFIX . "wx_games_shop_items` WHERE `item_type` = 'member_unlock' AND (`game` = 'plinko' OR `is_global` = 1)");
+                while ($c = $db->fetch_array($cfg_items)) {
+                    $d = json_decode($c['effect_data'], true);
+                    if (is_array($d) && isset($d['member'])) $member_cfg[$d['member']] = $d;
+                }
+                // 默认成员名字表
+                $default_names = ['boram'=>'全宝蓝','qri'=>'李居丽','soyeon'=>'朴素妍','eunjung'=>'恩静','hyomin'=>'孝敏','jiyeon'=>'智妍'];
+                foreach ($members as $mid => $m) {
+                    if (!is_array($m) || empty($m['unlocked'])) continue;
+                    $name = $default_names[$mid] ?? $mid;
+                    $items[] = [
+                        'name' => "👤 $name ($mid)",
+                        'item_type' => 'plinko_member',
+                        'icon' => '',
+                        'created_at' => 0,
+                        'extra' => 'Lv' . intval($m['level'] ?? 1),
+                        'quantity' => 1,
+                    ];
+                }
+                // 额外显示 EXP
+                if ($acc['exp'] > 0 || $acc['member_exp'] > 0) {
+                    $items[] = [
+                        'name' => '⭐ 经验值',
+                        'item_type' => 'plinko_exp',
+                        'icon' => '',
+                        'created_at' => 0,
+                        'extra' => 'EXP ' . intval($acc['exp']) . ' / 成员EXP ' . intval($acc['member_exp']),
+                        'quantity' => 1,
+                    ];
+                }
+            }
+        }
+    }
+
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['code' => 0, 'data' => $items], JSON_UNESCAPED_UNICODE);
     exit;
@@ -243,6 +327,15 @@ function wx_admin_score_tab_html($game, $is_plinko = false) {
                         <table class="table-admin">
                             <thead>
                                 <tr>
+                                    <?php if ($is_plinko): ?>
+                                    <th>时间</th>
+                                    <th>用户</th>
+                                    <th>风险/行数</th>
+                                    <th>落槽</th>
+                                    <th>倍率</th>
+                                    <th>下注→返奖</th>
+                                    <th>盈亏</th>
+                                <?php else: ?>
                                     <th>时间</th>
                                     <th>用户</th>
                                     <th>变动</th>
@@ -250,6 +343,7 @@ function wx_admin_score_tab_html($game, $is_plinko = false) {
                                     <th>变动后</th>
                                     <th>原因</th>
                                     <th>操作者</th>
+                                <?php endif; ?>
                                 </tr>
                             </thead>
                             <tbody id="logTableBody"><tr><td colspan="7" class="wx-empty">加载中...</td></tr></tbody>
@@ -276,8 +370,8 @@ function wx_admin_score_tab_html($game, $is_plinko = false) {
                             <th>UID</th>
                             <th>昵称</th>
                             <th>当前<?= $scoreLabel ?></th>
-                            <?php if (!$is_plinko): ?><th>场次</th><th>胜/负/平</th><?php endif; ?>
-                            <th>最高分</th>
+                            <?php if ($is_plinko): ?><th>总球数</th><?php else: ?><th>场次</th><th>胜/负/平</th><?php endif; ?>
+                            <th><?= $is_plinko ? 'EXP' : '最高分' ?></th>
                             <th>操作</th>
                         </tr>
                     </thead>
@@ -335,7 +429,7 @@ function loadUsers(p) {
                 const score = Number(u.score||0);
                 const nick = (u.nickname||'').replace(/'/g, "\\'");
                 const avatar = u.avatar ? `<img src="${u.avatar}" style="width:24px;height:24px;border-radius:50%;vertical-align:middle;margin-right:4px;">` : '';
-                const extraCols = isPlinko ? '' : `<td>${u.total_games||0}</td><td><span class="win-text">${u.wins||0}胜</span> / <span class="lose-text">${u.losses||0}负</span> / <span style="color:#999;">${u.draws||0}平</span></td>`;
+                const extraCols = isPlinko ? `<td>${u.total_games||0}</td>` : `<td>${u.total_games||0}</td><td><span class="win-text">${u.wins||0}胜</span> / <span class="lose-text">${u.losses||0}负</span> / <span style="color:#999;">${u.draws||0}平</span></td>`;
                 return `<tr>
                     <td>${rank}</td>
                     <td>${u.uid}</td>
@@ -413,8 +507,8 @@ function showBackpack(uid) {
         .then(r => r.json()).then(d => {
             const c = document.getElementById('backpackContent');
             if (!d.data || d.data.length === 0) { c.innerHTML = '<p class="text-muted">该玩家暂无道具</p>'; }
-            else c.innerHTML = '<table class="table table-sm"><thead><tr><th>道具</th><th>类型</th><th>数量</th><th>获得时间</th></tr></thead><tbody>'
-                + d.data.map(i => `<tr><td>${i.icon||''} ${i.name||'未知'}</td><td>${i.item_type||''}</td><td>${i.quantity||1}</td><td><small>${i.created_at?new Date(i.created_at*1000).toLocaleDateString():''}</small></td></tr>`).join('')
+            else c.innerHTML = '<table class="table table-sm"><thead><tr><th>道具</th><th>类型</th><th>详情</th><th>获得时间</th></tr></thead><tbody>'
+                + d.data.map(i => `<tr><td>${i.icon||''} ${i.name||'未知'}</td><td>${i.item_type||''}</td><td>${i.extra || (i.quantity||1)}</td><td><small>${i.created_at && i.created_at>0 ? new Date(i.created_at*1000).toLocaleDateString() : '—'}</small></td></tr>`).join('')
                 + '</tbody></table>';
         });
     jQuery('#backpackModal').modal('show');
@@ -443,7 +537,7 @@ if (typeof loadUsers === 'function') {
     setTimeout(function() { if (typeof loadAllLogs === 'function') loadAllLogs(1); }, 80);
 }
 
-// 加载所有用户的积分日志（不分用户）
+// 加载所有用户的流水（plinko 走逐球，其他走积分流水）
 function loadAllLogs(page) {
     const tbody = document.getElementById('logTableBody');
     if (!tbody) return;
@@ -452,18 +546,33 @@ function loadAllLogs(page) {
         .then(r => r.json()).then(d => {
             if (d.code !== 0 || !d.data) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载失败</td></tr>'; return; }
             if (d.data.length === 0) { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">暂无流水记录</td></tr>'; return; }
-            tbody.innerHTML = d.data.map(l => {
-                const dt = l.created_at ? new Date((l.created_at || 0)*1000).toLocaleString('zh-CN', {hour12:false}) : '-';
-                return `<tr>
-                    <td><small>${dt}</small></td>
-                    <td>${l.nickname || ''} (UID:${l.uid})</td>
-                    <td style="color:${l.score_change>=0?'#2ecc71':'#e74c3c'};font-weight:bold">${l.score_change>=0?'+':''}${l.score_change}</td>
-                    <td>${l.score_before}</td>
-                    <td>${l.score_after}</td>
-                    <td>${l.reason||''}</td>
-                    <td>${l.operator||''}</td>
-                </tr>`;
-            }).join('');
+            if (d.log_type === 'plinko') {
+                tbody.innerHTML = d.data.map(l => {
+                    const dt = l.created_at ? new Date((l.created_at || 0)*1000).toLocaleString('zh-CN', {hour12:false}) : '-';
+                    return `<tr>
+                        <td><small>${dt}</small></td>
+                        <td>${l.nickname || ''} (UID:${l.uid})</td>
+                        <td>${l.risk}/${l.rows}行</td>
+                        <td>${l.bin}槽</td>
+                        <td style="font-weight:bold;color:#e17055">${l.multiplier.toFixed(1)}x</td>
+                        <td>下注 ${l.bet} → 返 ${l.payout}</td>
+                        <td style="color:${l.profit>=0?'#2ecc71':'#e74c3c'}">${l.profit>=0?'+':''}${l.profit}</td>
+                    </tr>`;
+                }).join('');
+            } else {
+                tbody.innerHTML = d.data.map(l => {
+                    const dt = l.created_at ? new Date((l.created_at || 0)*1000).toLocaleString('zh-CN', {hour12:false}) : '-';
+                    return `<tr>
+                        <td><small>${dt}</small></td>
+                        <td>${l.nickname || ''} (UID:${l.uid})</td>
+                        <td style="color:${l.score_change>=0?'#2ecc71':'#e74c3c'};font-weight:bold">${l.score_change>=0?'+':''}${l.score_change}</td>
+                        <td>${l.score_before}</td>
+                        <td>${l.score_after}</td>
+                        <td>${l.reason||''}</td>
+                        <td>${l.operator||''}</td>
+                    </tr>`;
+                }).join('');
+            }
         }).catch(e => { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载出错</td></tr>'; });
 }
 
