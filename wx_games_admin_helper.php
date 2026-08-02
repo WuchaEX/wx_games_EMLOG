@@ -382,13 +382,13 @@ function wx_admin_score_tab_html($game, $is_plinko = false) {
         </div>
     </div>
 </div>
-<!-- 积分流水弹窗 -->
+<!-- 流水弹窗 -->
 <div class="modal fade" id="logModal" tabindex="-1">
     <div class="modal-dialog modal-lg"><div class="modal-content">
         <div class="modal-header"><h5>积分流水</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div>
         <div class="modal-body" style="max-height:500px;overflow-y:auto">
             <table class="table table-sm table-striped">
-                <thead><tr><th>时间</th><th>变化</th><th>前</th><th>后</th><th>原因</th><th>操作者</th></tr></thead>
+                <thead id="logModalHead"></thead>
                 <tbody id="logTbody"></tbody>
             </table>
             <div class="d-flex justify-content-between mt-2"><small class="text-muted" id="logPageInfo"></small><div class="btn-group btn-group-sm" id="logPager"></div></div>
@@ -475,22 +475,44 @@ function showUserLog(uid, nick) {
 }
 function loadLogs(uid, p) {
     logPage = p || logPage;
-    fetch(`?plugin=wx_games&game=${GAME}&${ACTION_KEY}=get_logs_page&log_page=${logPage}&search=${uid}`)
+    fetch(`./plugin.php?plugin=wx_games&game=${GAME}&${ACTION_KEY}=get_logs_page&log_page=${logPage}&search=${uid}`)
         .then(r => r.json()).then(d => {
-            if (d.code !== 0 || !d.data) { document.getElementById('logTbody').innerHTML = '<tr><td colspan="6" class="text-center text-danger">加载失败</td></tr>'; return; }
-            document.getElementById('logTbody').innerHTML = d.data.map(l => `<tr>
-                <td><small>${new Date((l.created_at||0)*1000).toLocaleString()}</small></td>
-                <td style="color:${l.score_change>=0?'#2ecc71':'#e74c3c'}">${l.score_change>=0?'+':''}${l.score_change}</td>
-                <td>${l.score_before}</td><td>${l.score_after}</td>
-                <td>${l.reason||''}</td><td>${l.operator||''}</td>
-            </tr>`).join('');
+            const head = document.getElementById('logModalHead');
+            const tbody = document.getElementById('logTbody');
+            if (d.code !== 0 || !d.data) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">加载失败</td></tr>'; return; }
+            if (d.data.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center">暂无流水记录</td></tr>'; return; }
+            if (d.log_type === 'plinko') {
+                head.innerHTML = '<tr><th>时间</th><th>风险/行数</th><th>落槽</th><th>倍率</th><th>下注→返奖</th><th>盈亏</th></tr>';
+                tbody.innerHTML = d.data.map(l => {
+                    const dt = l.created_at ? new Date((l.created_at||0)*1000).toLocaleString('zh-CN', {hour12:false}) : '-';
+                    return `<tr>
+                        <td><small>${dt}</small></td>
+                        <td>${l.risk}/${l.rows}行</td>
+                        <td>${l.bin}槽</td>
+                        <td style="font-weight:bold;color:#e17055">${l.multiplier.toFixed(1)}x</td>
+                        <td>${l.bet}→${l.payout}</td>
+                        <td style="color:${l.profit>=0?'#2ecc71':'#e74c3c'}">${l.profit>=0?'+':''}${l.profit}</td>
+                    </tr>`;
+                }).join('');
+            } else {
+                head.innerHTML = '<tr><th>时间</th><th>变化</th><th>前</th><th>后</th><th>原因</th><th>操作者</th></tr>';
+                tbody.innerHTML = d.data.map(l => {
+                    const dt = l.created_at ? new Date((l.created_at||0)*1000).toLocaleString('zh-CN', {hour12:false}) : '-';
+                    return `<tr>
+                        <td><small>${dt}</small></td>
+                        <td style="color:${l.score_change>=0?'#2ecc71':'#e74c3c'}">${l.score_change>=0?'+':''}${l.score_change}</td>
+                        <td>${l.score_before}</td><td>${l.score_after}</td>
+                        <td>${l.reason||''}</td><td>${l.operator||''}</td>
+                    </tr>`;
+                }).join('');
+            }
             document.getElementById('logPageInfo').textContent = `第 ${d.currentPage}/${d.totalPages} 页`;
             let ph = '';
             for (let i = 1; i <= d.totalPages; i++) {
                 ph += `<button class="btn btn-xs btn-${i===d.currentPage?'primary':'outline-secondary'} mr-1" onclick="loadLogs(${uid},${i})">${i}</button>`;
             }
             document.getElementById('logPager').innerHTML = ph;
-        });
+        }).catch(e => { document.getElementById('logTbody').innerHTML = '<tr><td colspan="6" class="text-danger text-center">加载出错</td></tr>'; });
 }
 
 function deleteUser(uid) {
@@ -503,7 +525,7 @@ function deleteUser(uid) {
 }
 
 function showBackpack(uid) {
-    fetch(`?plugin=wx_games&game=${GAME}&${ACTION_KEY}=get_backpack&uid=${uid}`)
+    fetch(`./plugin.php?plugin=wx_games&game=${GAME}&${ACTION_KEY}=get_backpack&uid=${uid}`)
         .then(r => r.json()).then(d => {
             const c = document.getElementById('backpackContent');
             if (!d.data || d.data.length === 0) { c.innerHTML = '<p class="text-muted">该玩家暂无道具</p>'; }
