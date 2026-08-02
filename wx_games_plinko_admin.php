@@ -1,6 +1,9 @@
 <?php
 defined('EMLOG_ROOT') || exit('access denied!');
 
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
 require_once __DIR__ . '/wx_games_plinko_fn.php';
 require_once __DIR__ . '/wx_games_admin_helper.php';
 
