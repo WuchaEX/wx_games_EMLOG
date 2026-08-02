@@ -107,7 +107,7 @@ function wx_admin_ajax_users_page($game, $use_accounts_table = false) {
             $data[] = [
                 'uid' => $uid,
                 'nickname' => $user_row ? $user_row['nickname'] : '未知',
-                'avatar' => $user_row ? (wx_games_resolve_avatar($user_row) ?: '') : '',
+                'avatar' => $user_row ? (wx_games_resolve_avatar($uid, $user_row['photo'] ?? null) ?: '') : '',
                 'score' => floatval($row['balance']),
                 'total_games' => (int)$row['play_count'],
                 'wins' => 0,
@@ -129,7 +129,7 @@ function wx_admin_ajax_users_page($game, $use_accounts_table = false) {
             $data[] = [
                 'uid' => $uid,
                 'nickname' => $user_row ? $user_row['nickname'] : '未知',
-                'avatar' => $user_row ? (wx_games_resolve_avatar($user_row) ?: '') : '',
+                'avatar' => $user_row ? (wx_games_resolve_avatar($uid, $user_row['photo'] ?? null) ?: '') : '',
                 'score' => (int)$row['score'],
                 'total_games' => (int)$row['total_games'],
                 'wins' => (int)$row['wins'],
@@ -373,7 +373,7 @@ function showModifyScore(uid, score, nick) {
     form.submit();
 }
 
-function showLogs(uid, nick) {
+function showUserLog(uid, nick) {
     logPage = 1;
     document.getElementById('logModal').querySelector('h5').textContent = `积分流水 - ${nick}(UID:${uid})`;
     loadLogs(uid);
@@ -466,6 +466,24 @@ function loadAllLogs(page) {
             }).join('');
         }).catch(e => { tbody.innerHTML = '<tr><td colspan="7" class="wx-empty">加载出错</td></tr>'; });
 }
+
+// 修改积分按钮点击事件（仿 ddz 样式）
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.btn-change-score');
+    if (!btn) return;
+    var uid = btn.getAttribute('data-uid');
+    var score = btn.getAttribute('data-score');
+    var nick = btn.getAttribute('data-nick');
+    var change = prompt(`修改 ${nick}(UID:${uid}) 的积分\n当前: ${score}\n输入变化量（正数增加，负数减少）:`, '0');
+    if (change === null || change === '0') return;
+    var reason = prompt('修改原因:', '管理员手动调整') || '管理员手动调整';
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.style.display = 'none';
+    form.innerHTML = `<input name="${ACTION_KEY}" value="change_score"><input name="uid" value="${uid}"><input name="score_change" value="${change}"><input name="reason" value="${reason}">`;
+    document.body.appendChild(form);
+    form.submit();
+});
 </script>
 <?php
     return ob_get_clean();

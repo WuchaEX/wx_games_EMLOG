@@ -552,7 +552,7 @@ function deletePlinkoUser(uid) {
 
 function loadAnalysis() {
     document.getElementById('analysisContent').innerHTML = '<p class="text-center text-muted py-4">正在分析...</p>';
-    fetch('?plugin=wx_games&game=plinko&plinko_action=get_analysis')
+    fetch('./plugin.php?plugin=wx_games&game=plinko&plinko_action=get_analysis')
         .then(r => r.json()).then(d => {
             if (d.code !== 0 || !d.data) {
                 document.getElementById('analysisContent').innerHTML = '<p class="text-danger">分析失败</p>';
